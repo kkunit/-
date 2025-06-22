@@ -1,25 +1,39 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Add Student</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <h1>Add New Student</h1>
-    <form method="post">
-        <label for="name">Name:</label>
-        <input type="text" id="name" name="name" required><br><br>
+{% extends "base.html" %}
 
-        <label for="age">Age:</label>
-        <input type="number" id="age" name="age"><br><br>
+{% block title %}添加新学生 - 学生管理系统{% endblock %}
 
-        <label for="grade">Grade:</label>
-        <input type="text" id="grade" name="grade"><br><br>
+{% block content %}
+<h1>添加新学生</h1>
+<div class="card">
+    <div class="card-body">
+        <form method="post">
+            <div class="mb-3">
+                <label for="name" class="form-label">姓名:</label>
+                <input type="text" class="form-control {% if errors.name %}is-invalid{% endif %}" id="name" name="name" value="{{ name or '' }}" required>
+                {% if errors.name %}
+                    <div class="invalid-feedback">{{ errors.name }}</div>
+                {% endif %}
+            </div>
 
-        <button type="submit">Add Student</button>
-    </form>
-    <a href="{{ url_for('index') }}">Back to Student List</a>
-</body>
-</html>
+            <div class="mb-3">
+                <label for="age" class="form-label">年龄:</label>
+                <input type="number" class="form-control {% if errors.age %}is-invalid{% endif %}" id="age" name="age" value="{{ age or '' }}">
+                {% if errors.age %}
+                    <div class="invalid-feedback">{{ errors.age }}</div>
+                {% endif %}
+            </div>
+
+            <div class="mb-3">
+                <label for="grade" class="form-label">年级:</label>
+                <input type="text" class="form-control {% if errors.grade %}is-invalid{% endif %}" id="grade" name="grade" value="{{ grade or '' }}">
+                {% if errors.grade %}
+                    <div class="invalid-feedback">{{ errors.grade }}</div>
+                {% endif %}
+            </div>
+
+            <button type="submit" class="btn btn-primary">添加学生</button>
+            <a href="{{ url_for('index') }}" class="btn btn-secondary ms-2">返回学生列表</a>
+        </form>
+    </div>
+</div>
+{% endblock %}
