@@ -274,14 +274,25 @@ def main():
         fig_path = os.path.join(args.output_dir_final, 'training_curves.png')
         try:
             fig.savefig(fig_path)
-            logger.info(f"Training curves saved to {fig_path}")
+            logger.info(f"Training curves plot saved to {fig_path}")
         except Exception as e:
-            logger.error(f"Could not save training curves: {e}")
+            logger.error(f"Could not save training curves plot: {e}")
         finally:
-            import matplotlib.pyplot as plt
+            import matplotlib.pyplot as plt # Ensure plt is available for close
             plt.close(fig)
     else:
         logger.info("No data to plot for training curves (history might be empty or keys missing).")
+
+    # Save history dictionary to JSON
+    history_json_path = os.path.join(args.output_dir_final, 'history.json')
+    try:
+        with open(history_json_path, 'w') as f:
+            json.dump(history, f, indent=4)
+        logger.info(f"Training history saved to {history_json_path}")
+    except Exception as e:
+        logger.error(f"Could not save training history JSON: {e}")
+
+    logger.info(f"All training outputs saved in: {args.output_dir_final}") # Log final output dir
 
 if __name__ == '__main__':
     main()

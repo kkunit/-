@@ -123,6 +123,49 @@ def display_segmentation_results(images, true_masks, pred_masks, num_samples=3, 
     # plt.show()
     return fig
 
+def save_single_segmentation_sample(image_tensor, true_mask_tensor, pred_mask_tensor,
+                                   output_dir, sample_idx, threshold=0.5,
+                                   mean=np.array([0.485, 0.456, 0.406]),
+                                   std=np.array([0.229, 0.224, 0.225])):
+    """
+    Saves individual components (original image, true mask, predicted mask) of a single segmentation sample.
+    image_tensor: Single image (C, H, W), PyTorch tensor, normalized.
+    true_mask_tensor: Single true mask (1 or C, H, W), PyTorch tensor.
+    pred_mask_tensor: Single predicted mask (1 or C, H, W), PyTorch tensor (logits or probabilities).
+    output_dir: Directory to save the images.
+    sample_idx: Index of the sample (for filename).
+    threshold: Threshold for binarizing predicted mask.
+    mean, std: For unnormalizing the original image.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # --- Process Original Image ---
+    img = image_tensor.cpu().permute(1, 2, 0).numpy() # C,H,W -> H,W,C
+    img = std * img + mean # Unnormalize
+    img = np.clip(img, 0, 1)
+    plt.imsave(os.path.join(output_dir, f"sample_{sample_idx}_orig.png"), img)
+
+    # --- Process True Mask ---
+    tm = true_mask_tensor.cpu()
+    if tm.ndim == 3 and tm.shape[0] > 1 : # Multi-class mask (C, H, W), show argmax
+        tm = torch.argmax(tm, dim=0)
+    elif tm.ndim == 3 and tm.shape[0] == 1: # Binary mask (1, H, W)
+        tm = tm.squeeze(0)
+    # if tm is already (H,W), it's fine
+    tm_np = tm.numpy()
+    plt.imsave(os.path.join(output_dir, f"sample_{sample_idx}_gt.png"), tm_np, cmap='gray')
+
+    # --- Process Predicted Mask ---
+    pm = pred_mask_tensor.cpu()
+    if pm.shape[0] == 1: # Binary segmentation (1, H, W) - logits assumed
+        pm_probs = torch.sigmoid(pm)
+        pm_labels = (pm_probs > threshold).byte().squeeze(0)
+    else: # Multi-class segmentation (C, H, W) - logits assumed
+        pm_probs = torch.softmax(pm, dim=0)
+        pm_labels = torch.argmax(pm_probs, dim=0)
+    pm_labels_np = pm_labels.numpy()
+    plt.imsave(os.path.join(output_dir, f"sample_{sample_idx}_pred.png"), pm_labels_np, cmap='gray')
+
 
 def plot_roc_curve(fpr, tpr, auc_score, title='ROC Curve'):
     """Plots a single ROC curve."""
@@ -260,4 +303,19 @@ if __name__ == '__main__':
     print("\nBasic viz_utils.py implemented and tested.")
     # These functions return matplotlib figures, which can then be saved to files
     # or embedded into a GUI canvas (e.g., Tkinter FigureCanvasTkAgg).
+
+    # Test save_single_segmentation_sample
+    print("\nTesting save_single_segmentation_sample...")
+    if not os.path.exists("temp_viz_output"):
+        os.makedirs("temp_viz_output")
+
+    save_single_segmentation_sample(
+        dummy_images[0],
+        dummy_true_masks[0],
+        dummy_pred_logits[0],
+        output_dir="temp_viz_output",
+        sample_idx=0
+    )
+    print("Saved single sample components to temp_viz_output (orig, gt, pred).")
+    # import shutil; shutil.rmtree("temp_viz_output") # Optional cleanup
     pass
