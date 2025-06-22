@@ -11,9 +11,9 @@ import matplotlib.pyplot as plt # For closing figures
 # Project imports
 from models.transunet import TransUNet, VIT_CONFIG
 from utils.data_utils import get_augmented_dataset
-from utils.eval_utils import dice_coefficient, jaccard_index, calculate_classification_metrics
+from utils.eval_utils import dice_coefficient, jaccard_index, calculate_classification_metrics, calculate_hausdorff_distance_from_masks
 # calculate_classification_metrics also gives data for CM, ROC, PR
-from utils.viz_utils import display_segmentation_results, plot_training_curves, plot_roc_curve, plot_pr_curve, plot_confusion_matrix
+from utils.viz_utils import display_segmentation_results, plot_training_curves, plot_roc_curve, plot_pr_curve, plot_confusion_matrix, save_single_segmentation_sample
 
 # Setup basic logging
 if not logging.getLogger().hasHandlers(): # Ensure root logger is configured only once
@@ -131,25 +131,37 @@ def main():
             all_preds_cpu.append(outputs.cpu())
             all_targets_cpu.append(targets.cpu()) # targets were already on CPU from dataloader
 
-            if args.save_samples_count > 0 and saved_samples_count < args.save_samples_count:
-                num_to_save_this_batch = min(inputs.size(0), args.save_samples_count - saved_samples_count)
-                if num_to_save_this_batch > 0:
-                    try:
-                        fig = display_segmentation_results(
-                            images=inputs.cpu()[:num_to_save_this_batch],
-                            true_masks=targets.cpu()[:num_to_save_this_batch], # Assuming targets are (B,1,H,W) or (B,H,W)
-                            pred_masks=outputs.cpu()[:num_to_save_this_batch], # Pass logits
-                            num_samples=num_to_save_this_batch,
-                            threshold=args.metrics_threshold,
-                            title_suffix=f"Batch{i}"
-                        )
-                        sample_fig_path = os.path.join(args.output_dir_final, f'sample_results_batch{i}_imgs.png')
-                        fig.savefig(sample_fig_path)
-                        plt.close(fig)
-                        logger.info(f"Saved sample segmentation plot to {sample_fig_path}")
-                        saved_samples_count += num_to_save_this_batch
-                    except Exception as e:
-                        logger.error(f"Error saving sample segmentation plot: {e}")
+            if args.save_samples_count > 0 and saved_samples_count < args.save_samples_count and i == 0: # Only save from the first batch for simplicity for GUI
+                num_to_save_this_batch = min(inputs.size(0), args.save_samples_count) # Save up to save_samples_count from the first batch
+
+                for sample_idx_in_batch in range(num_to_save_this_batch):
+                    if saved_samples_count >= args.save_samples_count:
+                        break
+
+                    # Save individual components for GUI display (e.g., first sample of first batch)
+                    if saved_samples_count == 0: # Save components for the very first sample overall for GUI
+                         try:
+                            save_single_segmentation_sample(
+                                image_tensor=inputs.cpu()[sample_idx_in_batch],
+                                true_mask_tensor=targets.cpu()[sample_idx_in_batch], # Assuming targets are (B,1,H,W) or (B,H,W)
+                                pred_mask_tensor=outputs.cpu()[sample_idx_in_batch], # Pass logits
+                                output_dir=args.output_dir_final, # Save in the main output directory
+                                sample_idx=0, # Use a fixed index '0' for the GUI to pick up
+                                threshold=args.metrics_threshold
+                            )
+                            logger.info(f"Saved individual components for sample 0 to {args.output_dir_final}")
+                         except Exception as e:
+                            logger.error(f"Error saving individual sample components: {e}")
+
+                    # Optionally, still save the combined plot for other samples or as a general overview
+                    # For this iteration, let's focus on saving the individual one for the GUI.
+                    # If you want to keep display_segmentation_results for a combined plot for other samples:
+                    # try:
+                    #     fig = display_segmentation_results(...)
+                    #     fig.savefig(...) plt.close(fig)
+                    # except Exception as e: logger.error(...)
+
+                    saved_samples_count += 1
 
 
     if not all_preds_cpu:
@@ -165,10 +177,41 @@ def main():
     metrics_results = {}
 
     # Segmentation-specific metrics
-    metrics_results['dice_coefficient'] = dice_coefficient(preds_tensor_all, targets_tensor_all, threshold=args.metrics_threshold)
-    metrics_results['jaccard_index'] = jaccard_index(preds_tensor_all, targets_tensor_all, threshold=args.metrics_threshold)
+    metrics_results['dice_coefficient'] = dice_coefficient(preds_tensor_all, targets_tensor_all.float(), threshold=args.metrics_threshold) # Ensure targets are float for dice
+    metrics_results['jaccard_index'] = jaccard_index(preds_tensor_all, targets_tensor_all.float(), threshold=args.metrics_threshold) # Ensure targets are float for jaccard
     logger.info(f"Dice Coefficient: {metrics_results['dice_coefficient']:.4f}")
     logger.info(f"Jaccard Index (IoU): {metrics_results['jaccard_index']:.4f}")
+
+    # Hausdorff Distance (only for binary C=1 masks currently)
+    if args.num_classes == 1:
+        # Ensure targets_tensor_all is also (B,1,H,W) and binary {0,1}
+        # preds_tensor_all is (B,1,H,W) logits
+        # targets_tensor_all is (B,1,H,W) byte {0,1} (after cat from dataloader which makes it (B,1,H,W) if mask_type was binary_float)
+        # The calculate_hausdorff_distance_from_masks expects (B,1,H,W) for both.
+        # Targets from dataloader might be (B,H,W) if mask_type was multiclass_long and num_classes=1 (semantically binary but squeezed)
+        # Let's ensure target_tensor_all is reshaped to (B,1,H,W) if it's (B,H,W)
+        current_targets_for_hd = targets_tensor_all
+        if current_targets_for_hd.ndim == 3: # B,H,W
+            current_targets_for_hd = current_targets_for_hd.unsqueeze(1) # B,1,H,W
+
+        # Ensure it's byte for HD function if it's not already
+        if current_targets_for_hd.dtype != torch.uint8 and current_targets_for_hd.dtype != torch.bool:
+            current_targets_for_hd = current_targets_for_hd.byte()
+
+
+        metrics_results['hausdorff_distance'] = calculate_hausdorff_distance_from_masks(
+            preds_tensor_all, # logits
+            current_targets_for_hd, # binary {0,1}
+            threshold=args.metrics_threshold
+        )
+        if not np.isnan(metrics_results['hausdorff_distance']):
+            logger.info(f"Hausdorff Distance: {metrics_results['hausdorff_distance']:.4f}")
+        else:
+            logger.info("Hausdorff Distance: Not calculated (possibly due to errors or non-binary case).")
+    else:
+        logger.info("Hausdorff Distance: Skipped (currently only for binary segmentation).")
+        metrics_results['hausdorff_distance'] = np.nan
+
 
     # Detailed classification-style metrics (pixel-wise)
     # Determine 'average' mode for multiclass based on num_classes

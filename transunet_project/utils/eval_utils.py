@@ -263,41 +263,102 @@ def calculate_classification_metrics(preds, targets, threshold=0.5, average='bin
     return metrics
 
 # Hausdorff Distance (often used in medical image segmentation)
-# Requires scipy, which might not be a default dependency.
+# Requires scipy and scikit-image
 try:
     from scipy.spatial.distance import directed_hausdorff
-
-    def hausdorff_distance(preds_coords, targets_coords):
-        """
-        Calculates the Hausdorff Distance between two sets of points.
-        preds_coords: Numpy array of shape (N, D) for N points in D dimensions (predicted boundary points).
-        targets_coords: Numpy array of shape (M, D) for M points in D dimensions (true boundary points).
-        Returns: max(h(A,B), h(B,A))
-        This is a placeholder. Actual extraction of boundary points from segmentation masks is needed.
-        For segmentation masks, one would typically find contours first.
-        """
-        if preds_coords.shape[0] == 0 or targets_coords.shape[0] == 0:
-            return np.inf # Or handle as appropriate, e.g. if one set is empty
-        if preds_coords.ndim != 2 or targets_coords.ndim != 2 or preds_coords.shape[1]!=targets_coords.shape[1]:
-            raise ValueError("Inputs must be 2D arrays of coordinates with same number of dimensions.")
-
-        hd1 = directed_hausdorff(preds_coords, targets_coords)[0]
-        hd2 = directed_hausdorff(targets_coords, preds_coords)[0]
-        return max(hd1, hd2)
-
+    from skimage.measure import find_contours
+    SCIPY_SKIMAGE_AVAILABLE = True
 except ImportError:
-    def hausdorff_distance(preds_coords, targets_coords):
-        print("SciPy not installed. Hausdorff distance calculation is unavailable.")
-        return -1 # Or some other indicator
+    SCIPY_SKIMAGE_AVAILABLE = False
+
+def calculate_hausdorff_distance_from_masks(pred_mask_batch, target_mask_batch, threshold=0.5, spacing=None):
+    """
+    Calculates the average Hausdorff Distance for a batch of 2D binary segmentation masks.
+    pred_mask_batch: Predicted masks (B, 1, H, W) - probabilities or logits.
+    target_mask_batch: Ground truth masks (B, 1, H, W) - binary {0,1}.
+    threshold: Threshold to binarize predicted masks.
+    spacing: Optional voxel/pixel spacing (e.g., [x_spacing, y_spacing]). If None, uses pixel distances.
+    Returns: Average Hausdorff distance over the batch, or np.nan if errors occur for all samples.
+    """
+    if not SCIPY_SKIMAGE_AVAILABLE:
+        # logger.warning("SciPy or scikit-image not installed. Hausdorff distance calculation is unavailable.")
+        print("SciPy or scikit-image not installed. Hausdorff distance calculation is unavailable.")
+        return np.nan # Or a specific error code like -1
+
+    batch_hausdorff_distances = []
+
+    if pred_mask_batch.shape[1] != 1 or target_mask_batch.shape[1] != 1:
+        # logger.warning("Hausdorff distance currently implemented for binary masks (C=1) only.")
+        print("Hausdorff distance currently implemented for binary masks (C=1) only.")
+        return np.nan
+
+
+    for i in range(pred_mask_batch.shape[0]):
+        # Get single predicted mask, apply sigmoid and threshold
+        pred_probs_single = torch.sigmoid(pred_mask_batch[i, 0]) # H, W
+        pred_binary_single = (pred_probs_single > threshold).cpu().numpy().astype(np.uint8)
+
+        # Get single target mask
+        target_binary_single = target_mask_batch[i, 0].cpu().numpy().astype(np.uint8)
+
+        # Find contours (boundary points)
+        # find_contours returns a list of (n,2) ndarrays, one for each contour found.
+        # We typically consider the external contour or the largest one.
+        # For simplicity, we'll take all points from all contours if multiple exist.
+        # The level argument for find_contours should be between min and max of image. For binary, 0.5 works.
+        contours_pred = find_contours(pred_binary_single, level=0.5)
+        contours_target = find_contours(target_binary_single, level=0.5)
+
+        if not contours_pred or not contours_target:
+            # If one mask is empty and the other is not, HD is arguably infinite or very large.
+            # If both are empty, HD is 0.
+            # If one is empty and the other is not, this sample contributes np.nan or a large penalty.
+            # For now, skip if either has no contour. This might happen for totally black/white masks.
+            if not contours_pred and not contours_target: # Both empty
+                 batch_hausdorff_distances.append(0.0)
+            # else: # One is empty, other is not - this is problematic for HD.
+                 # print(f"Warning: Sample {i}: No contours found in pred or target. Skipping HD for this sample.")
+            continue # Skip this sample if one is empty and other is not, or if specified behavior is to skip.
+
+        # Concatenate all contour points if multiple contours are found per mask
+        points_pred = np.concatenate(contours_pred, axis=0) if contours_pred else np.array([])
+        points_target = np.concatenate(contours_target, axis=0) if contours_target else np.array([])
+
+        if points_pred.shape[0] == 0 and points_target.shape[0] == 0: # Both effectively empty after concat
+            batch_hausdorff_distances.append(0.0)
+            continue
+        if points_pred.shape[0] == 0 or points_target.shape[0] == 0: # One is effectively empty
+            # print(f"Warning: Sample {i}: Effectively empty contour for pred or target. Skipping HD.")
+            continue
+
+
+        # Apply spacing if provided
+        if spacing is not None:
+            points_pred = points_pred * np.array(spacing)
+            points_target = points_target * np.array(spacing)
+
+        try:
+            hd1 = directed_hausdorff(points_pred, points_target)[0]
+            hd2 = directed_hausdorff(points_target, points_pred)[0]
+            batch_hausdorff_distances.append(max(hd1, hd2))
+        except Exception as e:
+            # print(f"Error calculating Hausdorff for sample {i}: {e}. Skipping.")
+            pass # Append nothing, effectively skipping this sample from average
+
+    if not batch_hausdorff_distances:
+        return np.nan # No valid HD scores to average
+    return np.mean(batch_hausdorff_distances)
+
 
 # --- Example Usage ---
 if __name__ == '__main__':
     # --- Binary Segmentation Example ---
     print("--- Binary Segmentation Metrics ---")
-    dummy_preds_seg_bin = torch.randn(2, 1, 64, 64) # B, C=1, H, W (logits)
-    dummy_targets_seg_bin = torch.randint(0, 2, (2, 1, 64, 64)).float() # B, C=1, H, W {0,1}
+    # Ensure dummy_preds_seg_bin are logits, and dummy_targets_seg_bin are binary {0,1}
+    dummy_preds_seg_bin = torch.randn(2, 1, 64, 64)
+    dummy_targets_seg_bin = torch.randint(0, 2, (2, 1, 64, 64)).byte() # Use byte for binary targets
 
-    dice_val = dice_coefficient(dummy_preds_seg_bin, dummy_targets_seg_bin)
+    dice_val = dice_coefficient(dummy_preds_seg_bin, dummy_targets_seg_bin.float()) # Dice expects float targets if preds are float
     print(f"Dice Coefficient (binary seg): {dice_val:.4f}")
 
     iou_val = jaccard_index(dummy_preds_seg_bin, dummy_targets_seg_bin)
@@ -343,25 +404,32 @@ if __name__ == '__main__':
 
     # --- Hausdorff Distance Example (conceptual) ---
     # This requires extracting contour points from masks first.
-    # For demonstration, using random points.
-    print("\n--- Hausdorff Distance (Conceptual) ---")
-    try:
-        # Dummy contour points (replace with actual contour extraction)
-        points_pred = np.random.rand(50, 2) # 50 points in 2D
-        points_true = np.random.rand(60, 2) # 60 points in 2D
-        hd = hausdorff_distance(points_pred, points_true)
-        print(f"Hausdorff Distance (dummy points): {hd:.4f}")
+    print("\n--- Hausdorff Distance (Actual Mask Based) ---")
+    if SCIPY_SKIMAGE_AVAILABLE:
+        # Create some dummy masks with actual shapes for contour finding
+        pred_mask_hd = torch.zeros(2, 1, 64, 64)
+        pred_mask_hd[:, :, 10:30, 10:30] = 10.0 # High logits for a square
 
-        # Test empty case
-        empty_points = np.array([]).reshape(0,2)
-        hd_empty = hausdorff_distance(points_pred, empty_points)
-        print(f"Hausdorff Distance (one empty set): {hd_empty}")
+        target_mask_hd = torch.zeros(2, 1, 64, 64).byte()
+        target_mask_hd[:, :, 15:35, 15:35] = 1 # A slightly offset square
 
+        hd_val = calculate_hausdorff_distance_from_masks(pred_mask_hd, target_mask_hd)
+        if not np.isnan(hd_val):
+            print(f"Hausdorff Distance (from dummy masks): {hd_val:.4f}")
+        else:
+            print("Hausdorff Distance (from dummy masks): Failed or N/A")
 
-    except NameError: # If scipy not installed, hausdorff_distance might not be defined
-        print("Hausdorff distance test skipped (scipy likely not installed).")
-    except Exception as e:
-        print(f"Error in Hausdorff test: {e}")
+        # Test with one empty mask (should result in nan or skip)
+        target_mask_hd_empty = torch.zeros(2,1,64,64).byte()
+        hd_val_empty_target = calculate_hausdorff_distance_from_masks(pred_mask_hd, target_mask_hd_empty)
+        print(f"Hausdorff Distance (target empty): {hd_val_empty_target}") # Expect nan
+
+        # Test with both empty masks (should result in 0 if handled that way)
+        pred_mask_hd_empty = torch.zeros(2,1,64,64)
+        hd_val_both_empty = calculate_hausdorff_distance_from_masks(pred_mask_hd_empty, target_mask_hd_empty)
+        print(f"Hausdorff Distance (both empty): {hd_val_both_empty}") # Expect 0.0
+    else:
+        print("Hausdorff distance test skipped (scipy or scikit-image not installed).")
 
 
     print("\nBasic eval_utils.py implemented and tested.")

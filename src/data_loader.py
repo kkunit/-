@@ -57,115 +57,153 @@ def create_dataloaders(dataset_path, batch_size, image_size=(224, 224), val_spli
                val_loader might be derived from train_loader.
     """
     data_transforms = get_data_transforms(image_size)
-
     image_datasets = {}
     dataloaders = {'train': None, 'val': None, 'test': None}
-    class_names = None
+    class_names = []
+    dataset_sizes = {}
 
-    # Check for train, val, test directories
+    # Define TransformedSubset class here
+    class TransformedSubset(torch.utils.data.Dataset):
+        def __init__(self, subset, transform=None):
+            self.subset = subset
+            self.transform = transform
+
+        def __getitem__(self, index):
+            x, y = self.subset[index] # The subset's underlying dataset (ImageFolder) returns PIL Image
+            if self.transform:
+                x = self.transform(x)
+            return x, y
+
+        def __len__(self):
+            return len(self.subset)
+
+    # Mode detection
     train_dir = os.path.join(dataset_path, 'train')
-    val_dir = os.path.join(dataset_path, 'val')
     test_dir = os.path.join(dataset_path, 'test')
+    is_standard_mode = os.path.isdir(train_dir) and os.path.isdir(test_dir)
 
-    if not os.path.exists(train_dir):
-        print(f"Training directory not found: {train_dir}")
-        # Depending on strictness, could raise error or return Nones
-        # For now, we'll allow continuing if only test set is needed for evaluation later
+    if is_standard_mode:
+        print(f"Standard mode detected: Using 'train', 'val', 'test' subfolders from {dataset_path}")
+        # Load Train dataset
+        if os.path.exists(train_dir):
+            # Create a base ImageFolder for train_full to get targets for stratification
+            train_full_for_split = datasets.ImageFolder(train_dir) # No transform yet
+            class_names = train_full_for_split.classes
 
-    if not os.path.exists(test_dir):
-        print(f"Test directory not found: {test_dir}")
+            val_dir = os.path.join(dataset_path, 'val')
+            if os.path.exists(val_dir) and os.path.isdir(val_dir):
+                print(f"Using existing validation directory: {val_dir}")
+                image_datasets['train'] = TransformedSubset(datasets.ImageFolder(train_dir), data_transforms['train'])
+                image_datasets['val'] = TransformedSubset(datasets.ImageFolder(val_dir), data_transforms['val'])
+            elif val_split > 0:
+                print(f"No 'val' directory found. Splitting 'train' data. Validation split: {val_split*100}%.")
+                train_indices, val_indices = train_test_split(
+                    list(range(len(train_full_for_split))),
+                    test_size=val_split,
+                    stratify=train_full_for_split.targets
+                )
+                train_subset_orig = Subset(train_full_for_split, train_indices)
+                val_subset_orig = Subset(train_full_for_split, val_indices)
 
-    # Load Train dataset
-    if os.path.exists(train_dir):
-        image_datasets['train_full'] = datasets.ImageFolder(train_dir, data_transforms['train'])
-        class_names = image_datasets['train_full'].classes
+                image_datasets['train'] = TransformedSubset(train_subset_orig, data_transforms['train'])
+                image_datasets['val'] = TransformedSubset(val_subset_orig, data_transforms['val'])
+            else:
+                print("No validation set will be used (no 'val' dir, val_split is 0).")
+                image_datasets['train'] = TransformedSubset(datasets.ImageFolder(train_dir), data_transforms['train'])
+                image_datasets['val'] = None
+        else:
+            print(f"Training directory not found: {train_dir}")
+            # Allow continuing if only test set is needed for evaluation later (though GUI might prevent)
 
-        if os.path.exists(val_dir):
-            print(f"Using existing validation directory: {val_dir}")
-            image_datasets['val'] = datasets.ImageFolder(val_dir, data_transforms['val'])
-            image_datasets['train'] = image_datasets['train_full'] # Use the full train set
-            # Apply train transform to the training part
-            image_datasets['train'].transform = data_transforms['train']
-        elif val_split > 0:
-            print(f"No 'val' directory found. Splitting 'train' data. Validation split: {val_split*100}%.")
-            train_indices, val_indices = train_test_split(
-                list(range(len(image_datasets['train_full']))),
-                test_size=val_split,
-                stratify=image_datasets['train_full'].targets # Stratify by class
-            )
-            image_datasets['train'] = Subset(image_datasets['train_full'], train_indices)
-            image_datasets['val'] = Subset(image_datasets['train_full'], val_indices)
+        # Load Test dataset
+        if os.path.exists(test_dir):
+            image_datasets['test'] = TransformedSubset(datasets.ImageFolder(test_dir), data_transforms['test'])
+            if not class_names: # If train_dir didn't exist
+                class_names = image_datasets['test'].subset.dataset.classes if hasattr(image_datasets['test'], 'subset') else []
+        else:
+            print(f"Test directory not found: {test_dir}")
+            image_datasets['test'] = None
 
-            # Important: Apply the correct transforms to the subsets
-            # Create new datasets with correct transforms for train and val subsets
-            # This is a bit tricky with Subset. A common way is to wrap Subset or handle transform in __getitem__
-            # For simplicity here, we'll assign the base dataset's transform, then override for val_subset.
-            # A cleaner way is to have custom Dataset wrappers if Subset becomes cumbersome with transforms.
-
-            # Let's ensure 'train_full' has train transforms, then 'val' subset gets 'val' transforms.
-            # This requires careful handling. A simpler approach for subsets is to make them new ImageFolder-like objects
-            # or ensure the transform is applied correctly when items are fetched.
-            # For now, we'll create new Dataset objects for the split parts with correct transforms.
-
-            # Re-creating datasets for split with correct transforms:
-            # This is inefficient as it loads data again. Better to handle transforms in a custom Subset or Dataset.
-            # However, for this project's scope, let's assume a simpler path or that user provides train/val.
-            # A common pattern:
-            temp_train_dataset = datasets.ImageFolder(train_dir,transform=None) # Load once without specific transform for splitting
-
-            train_subset_dataset = Subset(temp_train_dataset, train_indices)
-            val_subset_dataset = Subset(temp_train_dataset, val_indices)
-
-            # Now, assign transforms to these Subsets by wrapping them or having a transform attribute
-            # This is a common pain point. For torchvision.datasets.ImageFolder, the transform is part of the dataset object.
-            # A direct way:
-            image_datasets['train'] = train_subset_dataset
-            image_datasets['train'].dataset.transform = data_transforms['train'] # Apply to underlying full dataset for this subset
-
-            image_datasets['val'] = val_subset_dataset
-            image_datasets['val'].dataset.transform = data_transforms['val'] # Apply to underlying full dataset for this subset
-            # This approach of modifying .dataset.transform might be problematic if both subsets point to the same .dataset object
-            # A safer, but more verbose way, is to create custom Dataset wrappers for the subsets.
-            # For now, let's assume this simplified assignment works for typical use or recommend separate val folder.
-            # A more robust way for Subset transforms:
-            class TransformedSubset(torch.utils.data.Dataset):
-                def __init__(self, subset, transform):
-                    self.subset = subset
-                    self.transform = transform
-                def __getitem__(self, index):
-                    x, y = self.subset[index]
-                    if self.transform:
-                        x = self.transform(x) # ImageFolder already returns PIL, ready for transform
-                    return x, y
-                def __len__(self):
-                    return len(self.subset)
-
-            image_datasets['train'] = TransformedSubset(Subset(datasets.ImageFolder(train_dir), train_indices), data_transforms['train'])
-            image_datasets['val'] = TransformedSubset(Subset(datasets.ImageFolder(train_dir), val_indices), data_transforms['val'])
-            print(f"Train samples: {len(image_datasets['train'])}, Validation samples: {len(image_datasets['val'])}")
-
-        else: # No val_dir and no val_split
-            print("No validation set will be used as 'val' directory is missing and val_split is 0.")
-            image_datasets['train'] = image_datasets['train_full']
-            image_datasets['val'] = None # No validation loader
-
-        dataloaders['train'] = DataLoader(image_datasets['train'], batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
-        if image_datasets['val']:
+        # Create DataLoaders for standard mode
+        if image_datasets.get('train'):
+            dataloaders['train'] = DataLoader(image_datasets['train'], batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+        if image_datasets.get('val'):
             dataloaders['val'] = DataLoader(image_datasets['val'], batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+        if image_datasets.get('test'):
+            dataloaders['test'] = DataLoader(image_datasets['test'], batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
 
-    # Load Test dataset
-    if os.path.exists(test_dir):
-        image_datasets['test'] = datasets.ImageFolder(test_dir, data_transforms['test'])
-        if not class_names: # If train_dir didn't exist
-            class_names = image_datasets['test'].classes
-        dataloaders['test'] = DataLoader(image_datasets['test'], batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+    else: # Auto-split mode
+        print(f"Auto-split mode detected for path: {dataset_path}")
+        try:
+            full_dataset = datasets.ImageFolder(dataset_path) # No transform initially
+            if not full_dataset.classes:
+                raise ValueError("No classes found in the selected directory for auto-split mode.")
+            class_names = full_dataset.classes
+
+            # Stratified split: First, separate out the test set
+            test_set_size = 0.20 # Example: 20% for test
+            # val_split is the proportion of the *remaining* data for validation
+            # e.g. if val_split = 0.15, it means 15% of (100%-20%) = 15% of 80% = 12% of total for validation
+
+            indices = list(range(len(full_dataset)))
+            targets = full_dataset.targets
+
+            if len(set(targets)) < 2 : # Cannot stratify with only one class represented
+                print("Warning: Only one class found or samples for only one class. Using non-stratified split.")
+                trainval_idx, test_idx = train_test_split(indices, test_size=test_set_size, shuffle=True, random_state=42)
+                if val_split > 0 and len(trainval_idx) > 1 :
+                     train_idx, val_idx = train_test_split(trainval_idx, test_size=val_split, shuffle=True, random_state=42)
+                else:
+                     train_idx = trainval_idx
+                     val_idx = []
+
+            else: # Stratified split
+                trainval_idx, test_idx = train_test_split(indices, test_size=test_set_size, stratify=targets, shuffle=True, random_state=42)
+
+                # Stratify the train/val split from the remaining trainval_idx
+                if val_split > 0 and len(trainval_idx) > 1 : # Ensure there's something to split
+                    # Adjust val_split if trainval_idx is too small relative to what val_split would take
+                    # For example, if val_split is 0.25, but trainval_idx has only 3 samples for a class.
+                    # sklearn train_test_split handles small n_splits for stratify by possibly returning empty splits.
+                    trainval_targets = [targets[i] for i in trainval_idx]
+                    if len(set(trainval_targets)) < 2 or len(trainval_idx) < 2 : # Check if stratification is possible for train/val
+                        print("Warning: Not enough samples or classes in train/val portion for stratification. Using non-stratified train/val split.")
+                        train_idx, val_idx = train_test_split(trainval_idx, test_size=val_split, shuffle=True, random_state=42)
+                    else:
+                        train_idx, val_idx = train_test_split(trainval_idx, test_size=val_split, stratify=trainval_targets, shuffle=True, random_state=42)
+                else: # No validation split needed from trainval_idx or trainval_idx too small
+                    train_idx = trainval_idx
+                    val_idx = []
+
+
+            image_datasets['train'] = TransformedSubset(Subset(full_dataset, train_idx), data_transforms['train'])
+            if val_idx:
+                image_datasets['val'] = TransformedSubset(Subset(full_dataset, val_idx), data_transforms['val'])
+            else:
+                image_datasets['val'] = None
+            image_datasets['test'] = TransformedSubset(Subset(full_dataset, test_idx), data_transforms['test'])
+
+            dataloaders['train'] = DataLoader(image_datasets['train'], batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
+            if image_datasets['val']:
+                dataloaders['val'] = DataLoader(image_datasets['val'], batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+            dataloaders['test'] = DataLoader(image_datasets['test'], batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
+
+            print(f"Auto-split complete. Train: {len(train_idx)}, Val: {len(val_idx)}, Test: {len(test_idx)} samples.")
+
+        except Exception as e:
+            print(f"Error during auto-split data loading: {e}")
+            # Return empty or None DataLoaders
+            return None, None, None, [], {}
+
 
     if not class_names:
-        print("Could not determine class names (e.g. no train or test data found).")
-        # Potentially load from a config or raise error
+        print("Could not determine class names (e.g., no train or test data found, or auto_split failed).")
+        # Potentially load from a config or raise error if truly critical path.
+        # For now, GUI will show this based on load_dataset_info's output.
 
-    dataset_sizes = {x: len(image_datasets[x]) for x in image_datasets if image_datasets[x] is not None}
-    print(f"Dataset sizes: {dataset_sizes}")
+    dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val', 'test'] if image_datasets.get(x) is not None}
+    print(f"Final dataset sizes: {dataset_sizes}")
+    print(f"Class names: {class_names}")
 
     return dataloaders['train'], dataloaders['val'], dataloaders['test'], class_names, dataset_sizes
 
@@ -181,50 +219,120 @@ def load_dataset_info(dataset_path):
         "train_samples": 0, "val_samples": 0, "test_samples": 0,
         "classes": [],
         "train_distribution": "N/A", "val_distribution": "N/A", "test_distribution": "N/A",
-        "issues": []
+        "issues": [],
+        "auto_split_mode": False, # New flag
+        "data_load_mode": "N/A" # 'standard_split', 'auto_split', 'unsupported'
     }
 
-    found_classes = set()
+    train_dir = os.path.join(dataset_path, 'train')
+    test_dir = os.path.join(dataset_path, 'test')
+    # val_dir is optional, presence of train and test signifies standard mode primarily
 
-    for phase in ['train', 'val', 'test']:
-        phase_path = os.path.join(dataset_path, phase)
-        if not os.path.exists(phase_path) or not os.path.isdir(phase_path):
-            info['issues'].append(f"Directory not found or not a directory: {phase_path}")
-            continue
+    is_standard_mode = os.path.isdir(train_dir) and os.path.isdir(test_dir)
 
-        phase_samples = 0
-        phase_distribution = {}
+    image_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff')
 
-        try:
-            current_classes = sorted([d for d in os.listdir(phase_path) if os.path.isdir(os.path.join(phase_path, d))])
-            if not current_classes:
-                info['issues'].append(f"No class subdirectories found in {phase_path}")
+    if is_standard_mode:
+        info["data_load_mode"] = "standard_split"
+        found_classes = set()
+        for phase in ['train', 'val', 'test']:
+            phase_path = os.path.join(dataset_path, phase)
+            if not os.path.exists(phase_path) or not os.path.isdir(phase_path):
+                if phase == 'val': # Val is optional
+                    info['issues'].append(f"Optional directory not found: {phase_path}")
+                else:
+                    info['issues'].append(f"Required directory not found or not a directory: {phase_path}")
                 continue
 
-            for class_name in current_classes:
-                found_classes.add(class_name)
-                class_path = os.path.join(phase_path, class_name)
+            phase_samples = 0
+            phase_distribution = {}
+            try:
+                current_classes = sorted([d for d in os.listdir(phase_path) if os.path.isdir(os.path.join(phase_path, d))])
+                if not current_classes:
+                    info['issues'].append(f"No class subdirectories found in {phase_path}")
+                    continue
+
+                for class_name in current_classes:
+                    found_classes.add(class_name)
+                    class_path = os.path.join(phase_path, class_name)
+                    try:
+                        num_images = len([name for name in os.listdir(class_path) if os.path.isfile(os.path.join(class_path, name)) and name.lower().endswith(image_extensions)])
+                        if num_images > 0:
+                            phase_distribution[class_name] = num_images
+                            phase_samples += num_images
+                        else:
+                            info['issues'].append(f"No images found in class directory {class_path}")
+                    except OSError as e:
+                        info['issues'].append(f"Could not read class directory {class_path}: {e}")
+
+                info[f'{phase}_samples'] = phase_samples
+                info[f'{phase}_distribution'] = ", ".join([f"{k}: {v}" for k,v in phase_distribution.items()]) if phase_distribution else "No images found"
+            except OSError as e:
+                info['issues'].append(f"Could not read phase directory {phase_path}: {e}")
+
+        info['classes'] = sorted(list(found_classes))
+        if not info['classes']:
+             info['issues'].append(f"No classes found across train, val, test directories in standard mode.")
+        if info['val_samples'] == 0 and info['train_samples'] > 0 :
+            info['val_distribution'] = "Will be split from train if val_split > 0 during dataloader creation."
+
+    else: # Try flexible auto-split mode
+        info["auto_split_mode"] = True
+        info["data_load_mode"] = "auto_split"
+
+        potential_classes = sorted([d for d in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, d))])
+        found_classes_flexible = set()
+        total_samples_flexible = 0
+        flexible_distribution = {}
+
+        if not potential_classes:
+            info['issues'].append(f"No subdirectories found in {dataset_path} to be used as classes for auto-split mode.")
+            info["data_load_mode"] = "unsupported" # No class subfolders
+        else:
+            for class_name in potential_classes:
+                class_path = os.path.join(dataset_path, class_name)
                 try:
-                    num_images = len([name for name in os.listdir(class_path) if os.path.isfile(os.path.join(class_path, name))])
-                    phase_distribution[class_name] = num_images
-                    phase_samples += num_images
+                    num_images = len([name for name in os.listdir(class_path) if os.path.isfile(os.path.join(class_path, name)) and name.lower().endswith(image_extensions)])
+                    if num_images > 0:
+                        found_classes_flexible.add(class_name)
+                        flexible_distribution[class_name] = num_images
+                        total_samples_flexible += num_images
+                    else:
+                        info['issues'].append(f"No images found in potential class directory {class_path} for auto-split.")
                 except OSError as e:
-                    info['issues'].append(f"Could not read class directory {class_path}: {e}")
+                    info['issues'].append(f"Could not read potential class directory {class_path}: {e}")
 
+            if found_classes_flexible:
+                info['classes'] = sorted(list(found_classes_flexible))
+                # In auto-split mode, 'train_samples' will represent total samples before split.
+                # Actual train/val/test counts determined later in create_dataloaders.
+                info['train_samples'] = total_samples_flexible
+                info['train_distribution'] = ", ".join([f"{k}: {v}" for k,v in flexible_distribution.items()])
+                info['val_samples'] = 0 # Will be determined by split
+                info['test_samples'] = 0 # Will be determined by split
+                info['val_distribution'] = "To be auto-split from total data."
+                info['test_distribution'] = "To be auto-split from total data."
+            else:
+                info['issues'].append(f"No images found in any subdirectories of {dataset_path} for auto-split mode.")
+                info["data_load_mode"] = "unsupported" # No usable class subfolders
 
-            info[f'{phase}_samples'] = phase_samples
-            info[f'{phase}_distribution'] = ", ".join([f"{k}: {v}" for k,v in phase_distribution.items()]) if phase_distribution else "No images found"
+    # Final check: if no classes found by any mode, it's unsupported
+    if not info['classes'] and info["data_load_mode"] != "unsupported":
+        # This case might occur if standard mode dirs exist but are empty of class folders.
+        info['issues'].append(f"No classes with images found in the dataset at {dataset_path}.")
+        info["data_load_mode"] = "unsupported"
 
+    if info["data_load_mode"] == "unsupported":
+         # Check if there are images directly in the root folder (flat structure)
+        try:
+            flat_images_count = len([name for name in os.listdir(dataset_path) if os.path.isfile(os.path.join(dataset_path, name)) and name.lower().endswith(image_extensions)])
+            if flat_images_count > 0:
+                info['issues'].append(f"Found {flat_images_count} images directly in the root folder. This flat structure is not supported for training. Please organize images into class subfolders, or use train/test/val subfolders.")
+            elif not potential_classes and not is_standard_mode : # also no subfolders at all
+                 info['issues'].append(f"The selected folder does not contain train/test/val subdirectories, nor does it contain class subdirectories with images. It also does not contain images directly for training to be possible.")
         except OSError as e:
-            info['issues'].append(f"Could not read phase directory {phase_path}: {e}")
+            info['issues'].append(f"Could not read the selected directory {dataset_path}: {e}")
 
-    info['classes'] = sorted(list(found_classes))
-    if not info['classes']:
-         info['issues'].append(f"No classes found across train, val, test directories.")
-
-    # If 'val' was not found but 'train' was, indicate that it might be split from train
-    if info['val_samples'] == 0 and info['train_samples'] > 0 :
-        info['val_distribution'] = "Will be split from train if val_split > 0"
 
     return info
 

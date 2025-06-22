@@ -27,9 +27,9 @@ def plot_training_curves(history, metrics=['loss', 'accuracy', 'dice', 'iou']):
         epochs = range(1, len(history.get(train_metric_key, [])) + 1)
 
         if train_metric_key in history and len(history[train_metric_key]) > 0:
-            ax.plot(epochs, history[train_metric_key], 'bo-', label=f'Training {metric_name}')
+            ax.plot(epochs, history[train_metric_key], 'bo-', label=f'Train {metric_name.capitalize()}')
         if val_metric_key in history and len(history[val_metric_key]) > 0:
-            ax.plot(epochs, history[val_metric_key], 'ro-', label=f'Validation {metric_name}')
+            ax.plot(epochs, history[val_metric_key], 'ro-', label=f'Validation {metric_name.capitalize()}')
 
         ax.set_title(f'Training and Validation {metric_name.capitalize()}')
         ax.set_xlabel('Epochs')
@@ -38,10 +38,6 @@ def plot_training_curves(history, metrics=['loss', 'accuracy', 'dice', 'iou']):
         ax.grid(True)
 
     plt.tight_layout()
-    # Instead of plt.show(), we might want to return the figure object
-    # for embedding in a Tkinter/PyQt GUI.
-    # For now, let's assume it will be saved or shown directly.
-    # plt.show()
     return fig
 
 
@@ -106,44 +102,85 @@ def display_segmentation_results(images, true_masks, pred_masks, num_samples=3, 
         # Plotting
         ax_img = axes[i, 0]
         ax_img.imshow(img)
-        ax_img.set_title(f"Image {i+1} {title_suffix}")
+        ax_img.set_title(f"Original Image {i+1}{title_suffix}")
         ax_img.axis('off')
 
         ax_true_mask = axes[i, 1]
-        ax_true_mask.imshow(tm, cmap='gray') # Or a specific cmap for multi-class
-        ax_true_mask.set_title(f"True Mask {i+1} {title_suffix}")
+        ax_true_mask.imshow(tm, cmap='gray')
+        ax_true_mask.set_title(f"Ground Truth {i+1}{title_suffix}")
         ax_true_mask.axis('off')
 
         ax_pred_mask = axes[i, 2]
-        ax_pred_mask.imshow(pm_labels, cmap='gray') # Or a specific cmap for multi-class
-        ax_pred_mask.set_title(f"Predicted Mask {i+1} {title_suffix}")
+        ax_pred_mask.imshow(pm_labels, cmap='gray')
+        ax_pred_mask.set_title(f"Prediction {i+1}{title_suffix}")
         ax_pred_mask.axis('off')
 
     plt.tight_layout()
-    # plt.show()
     return fig
+
+def save_single_segmentation_sample(image_tensor, true_mask_tensor, pred_mask_tensor,
+                                   output_dir, sample_idx, threshold=0.5,
+                                   mean=np.array([0.485, 0.456, 0.406]),
+                                   std=np.array([0.229, 0.224, 0.225])):
+    """
+    Saves individual components (original image, true mask, predicted mask) of a single segmentation sample.
+    image_tensor: Single image (C, H, W), PyTorch tensor, normalized.
+    true_mask_tensor: Single true mask (1 or C, H, W), PyTorch tensor.
+    pred_mask_tensor: Single predicted mask (1 or C, H, W), PyTorch tensor (logits or probabilities).
+    output_dir: Directory to save the images.
+    sample_idx: Index of the sample (for filename).
+    threshold: Threshold for binarizing predicted mask.
+    mean, std: For unnormalizing the original image.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # --- Process Original Image ---
+    img = image_tensor.cpu().permute(1, 2, 0).numpy() # C,H,W -> H,W,C
+    img = std * img + mean # Unnormalize
+    img = np.clip(img, 0, 1)
+    plt.imsave(os.path.join(output_dir, f"sample_{sample_idx}_orig.png"), img)
+
+    # --- Process True Mask ---
+    tm = true_mask_tensor.cpu()
+    if tm.ndim == 3 and tm.shape[0] > 1 : # Multi-class mask (C, H, W), show argmax
+        tm = torch.argmax(tm, dim=0)
+    elif tm.ndim == 3 and tm.shape[0] == 1: # Binary mask (1, H, W)
+        tm = tm.squeeze(0)
+    # if tm is already (H,W), it's fine
+    tm_np = tm.numpy()
+    plt.imsave(os.path.join(output_dir, f"sample_{sample_idx}_gt.png"), tm_np, cmap='gray')
+
+    # --- Process Predicted Mask ---
+    pm = pred_mask_tensor.cpu()
+    if pm.shape[0] == 1: # Binary segmentation (1, H, W) - logits assumed
+        pm_probs = torch.sigmoid(pm)
+        pm_labels = (pm_probs > threshold).byte().squeeze(0)
+    else: # Multi-class segmentation (C, H, W) - logits assumed
+        pm_probs = torch.softmax(pm, dim=0)
+        pm_labels = torch.argmax(pm_probs, dim=0)
+    pm_labels_np = pm_labels.numpy()
+    plt.imsave(os.path.join(output_dir, f"sample_{sample_idx}_pred.png"), pm_labels_np, cmap='gray')
 
 
 def plot_roc_curve(fpr, tpr, auc_score, title='ROC Curve'):
     """Plots a single ROC curve."""
     fig, ax = plt.subplots(1, 1, figsize=(6, 5))
-    ax.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {auc_score:.2f})')
+    ax.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {auc_score})') # AUC score is already string formatted or N/A
     ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
     ax.set_xlim([0.0, 1.0])
     ax.set_ylim([0.0, 1.05])
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
+    ax.set_xlabel('False Positive Rate (FPR)')
+    ax.set_ylabel('True Positive Rate (TPR)')
     ax.set_title(title)
     ax.legend(loc="lower right")
     ax.grid(True)
     plt.tight_layout()
     return fig
 
-def plot_pr_curve(recall, precision, title='Precision-Recall Curve'):
+def plot_pr_curve(recall, precision, title='Precision-Recall Curve'): # Add auc_score if available for PR
     """Plots a single Precision-Recall curve."""
     fig, ax = plt.subplots(1, 1, figsize=(6, 5))
-    # The PR curve from sklearn might have precision for recall=0 at the end, handle this.
-    ax.plot(recall, precision, color='blue', lw=2, label='PR curve')
+    ax.plot(recall, precision, color='blue', lw=2, label='PR curve') # Add AUC to label if available
     ax.set_xlabel('Recall')
     ax.set_ylabel('Precision')
     ax.set_ylim([0.0, 1.05])
@@ -260,4 +297,19 @@ if __name__ == '__main__':
     print("\nBasic viz_utils.py implemented and tested.")
     # These functions return matplotlib figures, which can then be saved to files
     # or embedded into a GUI canvas (e.g., Tkinter FigureCanvasTkAgg).
+
+    # Test save_single_segmentation_sample
+    print("\nTesting save_single_segmentation_sample...")
+    if not os.path.exists("temp_viz_output"):
+        os.makedirs("temp_viz_output")
+
+    save_single_segmentation_sample(
+        dummy_images[0],
+        dummy_true_masks[0],
+        dummy_pred_logits[0],
+        output_dir="temp_viz_output",
+        sample_idx=0
+    )
+    print("Saved single sample components to temp_viz_output (orig, gt, pred).")
+    # import shutil; shutil.rmtree("temp_viz_output") # Optional cleanup
     pass

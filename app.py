@@ -3,6 +3,9 @@ from tkinter import ttk, filedialog, scrolledtext
 from tkinter import messagebox
 import torch # For device detection
 
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
 # Import modules from src
 from src import utils as app_utils
 from src import data_loader as app_data_loader
@@ -14,7 +17,7 @@ class CVApp:
     def __init__(self, root):
         self.root = root
         self.root.title("图像分类与分割工具") # Changed to Chinese
-        self.root.geometry("1000x850") # Slightly increased height for logs
+        self.root.geometry("1000x800") # Reduced height slightly, will manage internal layout
 
         # Model related attributes
         self.current_model_instance = None # Will hold the instantiated model
@@ -109,22 +112,66 @@ class CVApp:
         self.save_model_button.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky=tk.EW)
 
         progress_frame = ttk.LabelFrame(tab, text="训练过程与日志") # Changed
-        progress_frame.pack(fill=tk.X, padx=10, pady=10)
-        self.progress_display = scrolledtext.ScrolledText(progress_frame, height=10, wrap=tk.WORD, state=tk.DISABLED)
+        progress_frame.pack(fill=tk.X, padx=10, pady=5) # Reduced pady
+        self.progress_display = scrolledtext.ScrolledText(progress_frame, height=8, wrap=tk.WORD, state=tk.DISABLED) # Reduced height
         self.progress_display.pack(expand=True, fill=tk.X, padx=5, pady=5)
 
-        testing_frame = ttk.LabelFrame(tab, text="模型测试与评估") # Changed
-        testing_frame.pack(fill=tk.X, padx=10, pady=10)
-        test_controls_frame = ttk.Frame(testing_frame)
-        test_controls_frame.pack(fill=tk.X, pady=5)
-        self.load_model_button = ttk.Button(test_controls_frame, text="加载已训练模型", command=self.load_trained_model) # Changed
-        self.load_model_button.pack(side=tk.LEFT, padx=5)
-        self.select_test_images_button = ttk.Button(test_controls_frame, text="选择测试图片", command=self.select_test_images, state=tk.DISABLED) # Changed
-        self.select_test_images_button.pack(side=tk.LEFT, padx=5)
-        self.recognize_button = ttk.Button(test_controls_frame, text="运行评估", command=self.recognize_images, state=tk.DISABLED) # Changed
-        self.recognize_button.pack(side=tk.LEFT, padx=5)
-        self.test_results_display = scrolledtext.ScrolledText(testing_frame, height=12, wrap=tk.WORD, state=tk.DISABLED)
-        self.test_results_display.pack(expand=True, fill=tk.X, padx=5, pady=5)
+        # --- Training Curves Frame ---
+        training_curves_frame = ttk.LabelFrame(tab, text="训练曲线 (轮次 vs 指标)")
+        training_curves_frame.pack(fill=tk.BOTH, expand=False, padx=10, pady=5) # expand=False
+
+        fig_train_curves = Figure(figsize=(7, 2.5), dpi=100) # Reduced size
+        self.training_curves_canvas = FigureCanvasTkAgg(fig_train_curves, master=training_curves_frame)
+        self.training_curves_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.X, expand=False) # expand=False, fill=tk.X
+        # Add placeholder plots or text (will be cleared by actual plot function)
+        train_ax1 = fig_train_curves.add_subplot(121)
+        train_ax1.set_title("Loss") # Placeholder, will be in English later
+        train_ax1.set_xlabel("Epoch")
+        train_ax1.set_ylabel("Loss")
+        train_ax2 = fig_train_curves.add_subplot(122)
+        train_ax2.set_title("Accuracy") # Placeholder
+        train_ax2.set_xlabel("Epoch")
+        train_ax2.set_ylabel("Accuracy")
+        fig_train_curves.tight_layout()
+        self.training_curves_canvas.draw()
+
+
+        # --- Testing and Evaluation Frame (Combined) ---
+        # This frame should not expand excessively to push buttons off.
+        testing_main_frame = ttk.LabelFrame(tab, text="模型测试与评估")
+        testing_main_frame.pack(fill=tk.X, expand=False, padx=10, pady=10) # fill=tk.X, expand=False
+
+        # Controls for testing
+        test_controls_frame = ttk.Frame(testing_main_frame) # This frame holds buttons
+        test_controls_frame.pack(fill=tk.X, pady=2) # Reduced pady
+        self.load_model_button = ttk.Button(test_controls_frame, text="加载已训练模型", command=self.load_trained_model)
+        self.load_model_button.pack(side=tk.LEFT, padx=5, pady=2)
+        self.select_test_images_button = ttk.Button(test_controls_frame, text="选择测试图片", command=self.select_test_images, state=tk.DISABLED)
+        self.select_test_images_button.pack(side=tk.LEFT, padx=5, pady=2)
+        self.recognize_button = ttk.Button(test_controls_frame, text="运行评估", command=self.recognize_images, state=tk.DISABLED)
+        self.recognize_button.pack(side=tk.LEFT, padx=5, pady=2)
+
+        # Test results text display
+        self.test_results_display = scrolledtext.ScrolledText(testing_main_frame, height=6, wrap=tk.WORD, state=tk.DISABLED) # Further Reduced height
+        self.test_results_display.pack(expand=False, fill=tk.X, padx=5, pady=5) # expand=False
+
+        # --- Evaluation Metrics Plot Frame ---
+        eval_metrics_plot_frame = ttk.LabelFrame(testing_main_frame, text="评估指标图表")
+        eval_metrics_plot_frame.pack(fill=tk.X, expand=False, padx=5, pady=5) # fill=tk.X, expand=False
+
+        fig_eval_metrics = Figure(figsize=(7, 3), dpi=100) # Reduced size
+        self.evaluation_metrics_canvas = FigureCanvasTkAgg(fig_eval_metrics, master=eval_metrics_plot_frame)
+        self.evaluation_metrics_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.X, expand=False) # expand=False, fill=tk.X
+
+        # Placeholder plots (will be cleared by actual plot function)
+        eval_ax1 = fig_eval_metrics.add_subplot(131)
+        eval_ax1.set_title("CM") # Placeholder
+        eval_ax2 = fig_eval_metrics.add_subplot(132)
+        eval_ax2.set_title("ROC") # Placeholder
+        eval_ax3 = fig_eval_metrics.add_subplot(133)
+        eval_ax3.set_title("PR") # Placeholder
+        fig_eval_metrics.tight_layout()
+        self.evaluation_metrics_canvas.draw()
 
     def browse_and_load_dataset(self):
         path = filedialog.askdirectory()
@@ -135,33 +182,49 @@ class CVApp:
                 info = app_data_loader.load_dataset_info(path)
 
                 info_text = f"Path: {path}\n"
+                data_load_mode = info.get("data_load_mode", "N/A")
+                info_text += f"Data Loading Mode: {data_load_mode}\n"
                 info_text += f"Classes: {info.get('classes', 'N/A')}\n"
-                info_text += f"Train: {info.get('train_samples', 0)} ({info.get('train_distribution', 'N/A')})\n"
-                info_text += f"Val: {info.get('val_samples', 0)} ({info.get('val_distribution', 'N/A')})\n"
-                info_text += f"Test: {info.get('test_samples', 0)} ({info.get('test_distribution', 'N/A')})\n"
+
+                if data_load_mode == "auto_split":
+                    info_text += f"Total Samples (to be auto-split): {info.get('train_samples', 0)}\n"
+                    info_text += f"Distribution (total): {info.get('train_distribution', 'N/A')}\n"
+                    info_text += "Data will be automatically split into Train/Validation/Test sets.\n"
+                elif data_load_mode == "standard_split":
+                    info_text += f"Train Samples: {info.get('train_samples', 0)} ({info.get('train_distribution', 'N/A')})\n"
+                    info_text += f"Validation Samples: {info.get('val_samples', 0)} ({info.get('val_distribution', 'N/A')})\n"
+                    info_text += f"Test Samples: {info.get('test_samples', 0)} ({info.get('test_distribution', 'N/A')})\n"
+                else: # unsupported or N/A
+                    info_text += "Selected folder structure is not supported for training.\n"
 
                 if info.get('issues'):
                     info_text += "\nIssues Found:\n" + "\n".join(info['issues'])
 
                 self.dataset_info_label.config(text=info_text)
 
-                if not info.get('issues') and info.get('classes'):
+                allow_training = data_load_mode in ["standard_split", "auto_split"] and info.get('classes') and len(info.get('classes', [])) > 0
+
+                if allow_training:
                     self.class_names = info['classes']
                     self.num_classes = len(self.class_names)
-                    if self.num_classes > 0 :
-                        self.train_button.config(state=tk.NORMAL)
-                        self.log_message(f"数据集加载成功。类别: {self.class_names}。类别数量: {self.num_classes}") # Changed
-                        # Automatically update architecture display for new num_classes
-                        self.display_network_architecture()
-                    else:
-                        messagebox.showwarning("数据集警告", "数据集中未找到任何类别。训练功能已禁用。") # Changed
-                        self.train_button.config(state=tk.DISABLED)
+                    self.train_button.config(state=tk.NORMAL)
+                    self.log_message(f"Dataset information loaded. Mode: {data_load_mode}. Classes: {self.class_names}. Num classes: {self.num_classes}.")
+                    self.display_network_architecture() # Update architecture display for new num_classes
                 else:
-                    messagebox.showerror("数据集错误", "无法正确加载数据集信息或未找到类别。请检查日志。") # Changed
+                    self.class_names = []
+                    self.num_classes = 0
                     self.train_button.config(state=tk.DISABLED)
+                    log_msg = "Training disabled: "
+                    if not info.get('classes') or len(info.get('classes', [])) == 0:
+                        log_msg += "No classes found. "
+                    if data_load_mode not in ["standard_split", "auto_split"]:
+                        log_msg += f"Unsupported data load mode ('{data_load_mode}'). "
+
+                    self.log_message(log_msg)
+                    messagebox.showwarning("Dataset Warning", log_msg + "Please check dataset structure and logs.")
 
             except Exception as e:
-                messagebox.showerror("数据集错误", f"处理数据集失败: {e}") # Changed
+                messagebox.showerror("Dataset Processing Error", f"Failed to process dataset: {e}")
                 self.log_message(f"处理数据集时出错: {e}") # Changed
                 self.train_button.config(state=tk.DISABLED)
 
@@ -260,6 +323,15 @@ class CVApp:
                 if history['val_acc'] and any(history['val_acc']): # Check if val_acc has any non-zero/non-placeholder entries
                     best_val_acc = max(history['val_acc'])
                     self.log_progress(f"Best validation accuracy during training: {best_val_acc:.4f}")
+
+                # Plot training curves
+                if history and not history.get("error"):
+                    self.log_progress("Plotting training curves...")
+                    app_utils.plot_training_curves(self.training_curves_canvas, history)
+                    self.log_progress("Training curves displayed.")
+                else:
+                    self.log_progress("Skipping training curve plotting due to training error or no history.")
+
 
                 self.save_model_button.config(state=tk.NORMAL)
                 self.recognize_button.config(state=tk.NORMAL)
@@ -387,19 +459,28 @@ class CVApp:
 
         self.log_test_result("开始在测试集上进行评估...") # Changed
 
-        # Actual evaluation (using placeholders for now, will be fully implemented later)
-        evaluator = app_evaluator.ModelEvaluator(self.current_model_instance, self.test_loader_proper, self.device)
-        # metrics = evaluator.evaluate() # This will be the actual call
+        # Instantiate ModelEvaluator with class_names
+        evaluator = app_evaluator.ModelEvaluator(
+            self.current_model_instance,
+            self.test_loader_proper,
+            self.device,
+            class_names=self.class_names # Pass class names
+        )
 
-        # Using dummy metrics for now from evaluator.py
-        metrics = evaluator.dummy_metrics()
-        summary = evaluator.get_metrics_summary(metrics)
+        self.log_test_result("正在计算评估指标...") # Calculating evaluation metrics...
+        metrics = evaluator.evaluate() # This is the actual call
+
+        self.log_test_result("评估指标计算完成。") # Evaluation metrics calculation complete.
+
+        summary = evaluator.get_metrics_summary(metrics) # get_metrics_summary now uses class_names from metrics
         self.log_test_result(summary)
 
-        # Placeholder for plotting curves - will require matplotlib canvas integration
-        # app_utils.plot_performance_metrics_on_canvas(self.test_figure_canvas, metrics)
-        self.log_test_result("\nEvaluation finished (using simulated metrics for now).")
-        self.log_test_result("Actual metrics and curve plotting will be implemented in later steps.")
+        # Plot evaluation metrics
+        self.log_test_result("正在绘制评估图表...") # Plotting evaluation charts...
+        app_utils.plot_evaluation_metrics(self.evaluation_metrics_canvas, metrics)
+        self.log_test_result("评估图表已显示。") # Evaluation charts displayed.
+
+        self.log_test_result("\n评估完成。") # Evaluation finished.
 
 
     def log_message(self, message):
