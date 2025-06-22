@@ -13,7 +13,7 @@ from src import resnet_builder as app_resnet_builder # Import the actual ResNet 
 class CVApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Image Classification Tool")
+        self.root.title("图像分类与分割工具") # Changed to Chinese
         self.root.geometry("1000x850") # Slightly increased height for logs
 
         # Model related attributes
@@ -43,23 +43,23 @@ class CVApp:
 
     def setup_classification_ui(self, tab):
         # --- Top Frame for Data and Model Selection ---
-        top_frame = ttk.LabelFrame(tab, text="Setup")
+        top_frame = ttk.LabelFrame(tab, text="设置") # Changed
         top_frame.pack(side=tk.TOP, fill=tk.X, padx=10, pady=10)
 
-        ttk.Label(top_frame, text="Dataset Path:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
+        ttk.Label(top_frame, text="数据集路径:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W) # Changed
         self.dataset_path_var = tk.StringVar()
         self.dataset_path_entry = ttk.Entry(top_frame, textvariable=self.dataset_path_var, width=50)
         self.dataset_path_entry.grid(row=0, column=1, padx=5, pady=5, sticky=tk.EW)
-        self.browse_dataset_button = ttk.Button(top_frame, text="Browse...", command=self.browse_and_load_dataset)
+        self.browse_dataset_button = ttk.Button(top_frame, text="浏览...", command=self.browse_and_load_dataset) # Changed
         self.browse_dataset_button.grid(row=0, column=2, padx=5, pady=5)
 
-        self.dataset_info_label = ttk.Label(top_frame, text="Dataset info: Not loaded", wraplength=300, justify=tk.LEFT)
+        self.dataset_info_label = ttk.Label(top_frame, text="数据集信息：未加载", wraplength=300, justify=tk.LEFT) # Changed
         self.dataset_info_label.grid(row=0, column=3, rowspan=2, padx=10, pady=5, sticky=tk.NW)
 
-        ttk.Label(top_frame, text="Select Model:").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
+        ttk.Label(top_frame, text="选择模型:").grid(row=1, column=0, padx=5, pady=5, sticky=tk.W) # Changed
         self.model_var = tk.StringVar()
         # For now, ResNet_Baseline will map to resnet18. ResNet_Improved is a placeholder.
-        self.model_options = ["ResNet18_Baseline", "ResNet34_Baseline", "ResNet_Improved"]
+        self.model_options = ["ResNet18_Baseline", "ResNet34_Baseline", "ResNet_Improved"] # Kept model names technical
         self.model_dropdown = ttk.Combobox(top_frame, textvariable=self.model_var,
                                            values=self.model_options, state="readonly")
         self.model_dropdown.grid(row=1, column=1, padx=5, pady=5, sticky=tk.EW)
@@ -73,55 +73,55 @@ class CVApp:
         middle_frame = ttk.Frame(tab)
         middle_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        arch_frame = ttk.LabelFrame(middle_frame, text="Network Architecture")
+        arch_frame = ttk.LabelFrame(middle_frame, text="网络架构") # Changed
         arch_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.arch_display = scrolledtext.ScrolledText(arch_frame, height=15, width=45, wrap=tk.WORD, state=tk.DISABLED)
         self.arch_display.pack(expand=True, fill=tk.BOTH, padx=5, pady=5)
 
-        params_frame = ttk.LabelFrame(middle_frame, text="Training Parameters")
+        params_frame = ttk.LabelFrame(middle_frame, text="训练参数") # Changed
         params_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5, pady=5)
 
-        ttk.Label(params_frame, text="Optimizer:").grid(row=0, column=0, padx=5, pady=3, sticky=tk.W)
+        ttk.Label(params_frame, text="优化器:").grid(row=0, column=0, padx=5, pady=3, sticky=tk.W) # Changed
         self.optimizer_var = tk.StringVar(value="Adam")
         self.optimizer_dropdown = ttk.Combobox(params_frame, textvariable=self.optimizer_var,
                                                values=["Adam", "SGD"], state="readonly", width=12)
         self.optimizer_dropdown.grid(row=0, column=1, padx=5, pady=3, sticky=tk.EW)
 
-        ttk.Label(params_frame, text="Learning Rate:").grid(row=1, column=0, padx=5, pady=3, sticky=tk.W)
+        ttk.Label(params_frame, text="学习率:").grid(row=1, column=0, padx=5, pady=3, sticky=tk.W) # Changed
         self.lr_var = tk.DoubleVar(value=0.001)
         self.lr_entry = ttk.Entry(params_frame, textvariable=self.lr_var, width=15)
         self.lr_entry.grid(row=1, column=1, padx=5, pady=3, sticky=tk.EW)
 
-        ttk.Label(params_frame, text="Batch Size:").grid(row=2, column=0, padx=5, pady=3, sticky=tk.W)
+        ttk.Label(params_frame, text="批次大小:").grid(row=2, column=0, padx=5, pady=3, sticky=tk.W) # Changed
         self.batch_size_var = tk.IntVar(value=32)
         self.batch_size_entry = ttk.Entry(params_frame, textvariable=self.batch_size_var, width=15)
         self.batch_size_entry.grid(row=2, column=1, padx=5, pady=3, sticky=tk.EW)
 
-        ttk.Label(params_frame, text="Epochs:").grid(row=3, column=0, padx=5, pady=3, sticky=tk.W)
+        ttk.Label(params_frame, text="训练轮次:").grid(row=3, column=0, padx=5, pady=3, sticky=tk.W) # Changed
         self.epochs_var = tk.IntVar(value=10)
         self.epochs_entry = ttk.Entry(params_frame, textvariable=self.epochs_var, width=15)
         self.epochs_entry.grid(row=3, column=1, padx=5, pady=3, sticky=tk.EW)
 
-        self.train_button = ttk.Button(params_frame, text="Train Model", command=self.train_model, state=tk.DISABLED)
+        self.train_button = ttk.Button(params_frame, text="训练模型", command=self.train_model, state=tk.DISABLED) # Changed
         self.train_button.grid(row=4, column=0, columnspan=2, padx=5, pady=10, sticky=tk.EW)
 
-        self.save_model_button = ttk.Button(params_frame, text="Save Trained Model", command=self.save_model, state=tk.DISABLED)
+        self.save_model_button = ttk.Button(params_frame, text="保存已训练模型", command=self.save_model, state=tk.DISABLED) # Changed
         self.save_model_button.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky=tk.EW)
 
-        progress_frame = ttk.LabelFrame(tab, text="Training Progress & Logs")
+        progress_frame = ttk.LabelFrame(tab, text="训练过程与日志") # Changed
         progress_frame.pack(fill=tk.X, padx=10, pady=10)
         self.progress_display = scrolledtext.ScrolledText(progress_frame, height=10, wrap=tk.WORD, state=tk.DISABLED)
         self.progress_display.pack(expand=True, fill=tk.X, padx=5, pady=5)
 
-        testing_frame = ttk.LabelFrame(tab, text="Model Testing & Evaluation")
+        testing_frame = ttk.LabelFrame(tab, text="模型测试与评估") # Changed
         testing_frame.pack(fill=tk.X, padx=10, pady=10)
         test_controls_frame = ttk.Frame(testing_frame)
         test_controls_frame.pack(fill=tk.X, pady=5)
-        self.load_model_button = ttk.Button(test_controls_frame, text="Load Trained Model", command=self.load_trained_model)
+        self.load_model_button = ttk.Button(test_controls_frame, text="加载已训练模型", command=self.load_trained_model) # Changed
         self.load_model_button.pack(side=tk.LEFT, padx=5)
-        self.select_test_images_button = ttk.Button(test_controls_frame, text="Select Test Image(s)", command=self.select_test_images, state=tk.DISABLED)
+        self.select_test_images_button = ttk.Button(test_controls_frame, text="选择测试图片", command=self.select_test_images, state=tk.DISABLED) # Changed
         self.select_test_images_button.pack(side=tk.LEFT, padx=5)
-        self.recognize_button = ttk.Button(test_controls_frame, text="Run Evaluation", command=self.recognize_images, state=tk.DISABLED)
+        self.recognize_button = ttk.Button(test_controls_frame, text="运行评估", command=self.recognize_images, state=tk.DISABLED) # Changed
         self.recognize_button.pack(side=tk.LEFT, padx=5)
         self.test_results_display = scrolledtext.ScrolledText(testing_frame, height=12, wrap=tk.WORD, state=tk.DISABLED)
         self.test_results_display.pack(expand=True, fill=tk.X, padx=5, pady=5)
@@ -150,19 +150,19 @@ class CVApp:
                     self.num_classes = len(self.class_names)
                     if self.num_classes > 0 :
                         self.train_button.config(state=tk.NORMAL)
-                        self.log_message(f"Dataset loaded. Classes: {self.class_names}. Num classes: {self.num_classes}")
+                        self.log_message(f"数据集加载成功。类别: {self.class_names}。类别数量: {self.num_classes}") # Changed
                         # Automatically update architecture display for new num_classes
                         self.display_network_architecture()
                     else:
-                        messagebox.showwarning("Dataset Warning", "No classes found in the dataset. Training disabled.")
+                        messagebox.showwarning("数据集警告", "数据集中未找到任何类别。训练功能已禁用。") # Changed
                         self.train_button.config(state=tk.DISABLED)
                 else:
-                    messagebox.showerror("Dataset Error", "Could not properly load dataset info or no classes found. Check logs.")
+                    messagebox.showerror("数据集错误", "无法正确加载数据集信息或未找到类别。请检查日志。") # Changed
                     self.train_button.config(state=tk.DISABLED)
 
             except Exception as e:
-                messagebox.showerror("Dataset Error", f"Failed to process dataset: {e}")
-                self.log_message(f"Error processing dataset: {e}")
+                messagebox.showerror("数据集错误", f"处理数据集失败: {e}") # Changed
+                self.log_message(f"处理数据集时出错: {e}") # Changed
                 self.train_button.config(state=tk.DISABLED)
 
     def display_network_architecture(self, event=None):
@@ -207,9 +207,9 @@ class CVApp:
                 app_data_loader.create_dataloaders(dataset_path, batch_size=batch_size, val_split=0.15, num_workers=0) # num_workers=0 for GUI stability in some cases
 
             if not self.train_loader:
-                messagebox.showerror("Data Error", "Failed to create training data loader. Check dataset path and structure.")
+                messagebox.showerror("数据错误", "创建训练数据加载器失败。请检查数据集路径和结构。") # Changed
                 return
-            self.log_progress(f"DataLoaders created. Train batches: {len(self.train_loader)}, Val batches: {len(self.val_loader) if self.val_loader else 'N/A'}")
+            self.log_progress(f"数据加载器已创建。训练批次: {len(self.train_loader)}, 验证批次: {len(self.val_loader) if self.val_loader else '无'}") # Changed
 
             # Instantiate the selected model
             model_choice = self.model_var.get()
@@ -219,11 +219,11 @@ class CVApp:
             elif model_choice == "ResNet34_Baseline":
                 self.current_model_instance = app_resnet_builder.resnet34(num_classes=self.num_classes, pretrained=True)
             elif model_choice == "ResNet_Improved":
-                messagebox.showinfo("Not Implemented", "ResNet_Improved model training is not yet implemented.")
+                messagebox.showinfo("未实现", "ResNet_Improved 模型训练尚未实现。") # Changed
                 # self.current_model_instance = app_resnet_builder.resnet_improved(...) # When available
                 return
             else:
-                messagebox.showerror("Model Error", f"Unknown model selected: {model_choice}")
+                messagebox.showerror("模型错误", f"选择了未知模型: {model_choice}") # Changed
                 return
 
             self.current_model_instance.to(self.device)
@@ -252,10 +252,10 @@ class CVApp:
             history = trainer.start_training(self.log_progress)
 
             if "error" in history:
-                self.log_message(f"Training stopped due to an error: {history['error']}")
-                messagebox.showerror("Training Error", f"Training failed: {history['error']}")
+                self.log_message(f"训练因错误停止: {history['error']}") # Changed
+                messagebox.showerror("训练错误", f"训练失败: {history['error']}") # Changed
             else:
-                self.log_progress("Actual training process finished.")
+                self.log_progress("实际训练过程已完成。") # Changed
                 # Log summary of history if needed, e.g., best validation accuracy
                 if history['val_acc'] and any(history['val_acc']): # Check if val_acc has any non-zero/non-placeholder entries
                     best_val_acc = max(history['val_acc'])
@@ -267,33 +267,33 @@ class CVApp:
             self.select_test_images_button.config(state=tk.NORMAL)
 
         except Exception as e:
-            self.log_message(f"ERROR during training setup or process: {e}")
-            messagebox.showerror("Training Error", f"An error occurred: {e}")
+            self.log_message(f"训练设置或过程中发生错误: {e}") # Changed
+            messagebox.showerror("训练错误", f"发生错误: {e}") # Changed
 
 
     def save_model(self):
         if not self.current_model_instance:
-            messagebox.showerror("Error", "No model has been trained or loaded yet.")
+            messagebox.showerror("错误", "尚未训练或加载模型。") # Changed
             return
         filepath = filedialog.asksaveasfilename(
             defaultextension=".pth",
-            filetypes=[("PyTorch Model Files", "*.pth"), ("All Files", "*.*")],
-            title="Save Trained Model"
+            filetypes=[("PyTorch 模型文件", "*.pth"), ("所有文件", "*.*")], # Changed
+            title="保存已训练模型" # Changed
         )
         if filepath:
             try:
                 torch.save(self.current_model_instance.state_dict(), filepath)
-                self.log_message(f"Model saved to: {filepath}")
-                messagebox.showinfo("Save Model", f"Model successfully saved to {filepath}")
+                self.log_message(f"模型已保存至: {filepath}") # Changed
+                messagebox.showinfo("保存模型", f"模型成功保存至 {filepath}") # Changed
             except Exception as e:
-                self.log_message(f"Error saving model: {e}")
-                messagebox.showerror("Save Error", f"Could not save model: {e}")
+                self.log_message(f"保存模型时出错: {e}") # Changed
+                messagebox.showerror("保存错误", f"无法保存模型: {e}") # Changed
 
 
     def load_trained_model(self):
         filepath = filedialog.askopenfilename(
-            filetypes=[("PyTorch Model Files", "*.pth"), ("All Files", "*.*")],
-            title="Load Trained Model"
+            filetypes=[("PyTorch 模型文件", "*.pth"), ("所有文件", "*.*")], # Changed
+            title="加载已训练模型" # Changed
         )
         if filepath:
             try:
@@ -307,18 +307,18 @@ class CVApp:
                      # Basic prompt or default. A real app might need more robust handling.
                     try:
                         # Attempt to get num_classes from a simple prompt
-                        num_prompted_classes = simpledialog.askinteger("Number of Classes", "Enter number of classes for the loaded model:", initialvalue=2)
+                        num_prompted_classes = simpledialog.askinteger("类别数量", "请输入加载模型的类别数量:", initialvalue=2) # Changed
                         if num_prompted_classes is not None and num_prompted_classes > 0:
                             num_model_classes = num_prompted_classes
                         else: # User cancelled or entered invalid
-                            messagebox.showwarning("Load Model", "Number of classes not determined. Assuming 2 classes for model structure.")
+                            messagebox.showwarning("加载模型", "未能确定类别数量。假设模型结构为2个类别。") # Changed
                             num_model_classes = 2 # Fallback
                     except Exception: # In case simpledialog is not available or other issues
-                         messagebox.showwarning("Load Model", "Could not determine number of classes. Assuming 2 classes for model structure.")
+                         messagebox.showwarning("加载模型", "无法确定类别数量。假设模型结构为2个类别。") # Changed
                          num_model_classes = 2 # Fallback
 
                 model_choice = self.model_var.get() # Use current selection in combobox
-                self.log_message(f"Attempting to load model {model_choice} with {num_model_classes} classes from {filepath}")
+                self.log_message(f"尝试从 {filepath} 加载具有 {num_model_classes} 个类别的模型 {model_choice}") # Changed
 
                 if model_choice == "ResNet18_Baseline":
                     self.current_model_instance = app_resnet_builder.resnet18(num_classes=num_model_classes, pretrained=False)
@@ -326,47 +326,47 @@ class CVApp:
                     self.current_model_instance = app_resnet_builder.resnet34(num_classes=num_model_classes, pretrained=False)
                 # Add ResNet_Improved here when available
                 else:
-                    messagebox.showerror("Load Error", f"Model type {model_choice} not recognized for loading.")
+                    messagebox.showerror("加载错误", f"无法识别用于加载的模型类型 {model_choice}。") # Changed
                     return
 
                 self.current_model_instance.load_state_dict(torch.load(filepath, map_location=self.device))
                 self.current_model_instance.to(self.device)
                 self.current_model_instance.eval() # Set to evaluation mode
 
-                self.log_message(f"Model loaded from: {filepath} and set to evaluation mode.")
-                messagebox.showinfo("Load Model", f"Model loaded successfully from {filepath}")
+                self.log_message(f"模型已从 {filepath} 加载并设置为评估模式。") # Changed
+                messagebox.showinfo("加载模型", f"模型已成功从 {filepath} 加载。") # Changed
                 self.recognize_button.config(state=tk.NORMAL)
                 self.select_test_images_button.config(state=tk.NORMAL)
                 # Update architecture display for the loaded model config
                 self.display_network_architecture()
 
             except Exception as e:
-                self.log_message(f"Error loading model: {e}")
-                messagebox.showerror("Load Error", f"Could not load model: {e}")
+                self.log_message(f"加载模型时出错: {e}") # Changed
+                messagebox.showerror("加载错误", f"无法加载模型: {e}") # Changed
 
 
     def select_test_images(self):
         # This function is more for selecting individual images for ad-hoc testing.
         # The main evaluation will use the test set from the loaded dataset path.
         filepaths = filedialog.askopenfilenames(
-            title="Select Test Image(s)",
-            filetypes=[("Image Files", "*.jpg *.jpeg *.png *.bmp"), ("All Files", "*.*")]
+            title="选择测试图片",  # Changed
+            filetypes=[("图片文件", "*.jpg *.jpeg *.png *.bmp"), ("所有文件", "*.*")] # Changed
         )
         if filepaths:
-            self.log_test_result(f"Selected {len(filepaths)} image(s) for ad-hoc testing (simulated): {filepaths[0]}...")
+            self.log_test_result(f"选择了 {len(filepaths)} 张图片用于即时测试 (模拟): {filepaths[0]}...") # Changed
             # Store these filepaths if you plan to implement single/multi-image prediction display
             # self.adhoc_test_image_paths = filepaths
-            messagebox.showinfo("Images Selected", f"{len(filepaths)} images selected. Ad-hoc prediction for these is not fully implemented in this step, evaluation uses the test set.")
+            messagebox.showinfo("图片已选择", f"已选择 {len(filepaths)} 张图片。此步骤中未完全实现对这些图片的即时预测，评估功能将使用测试集。") # Changed
 
 
     def recognize_images(self): # This is the "Run Evaluation" button
         if not self.current_model_instance:
-             messagebox.showerror("Error", "No model loaded or trained.")
+             messagebox.showerror("错误", "尚未加载或训练模型。") # Changed
              return
 
         if not self.test_loader_proper and self.dataset_path_var.get():
             # Try to create test_loader if dataset path is available but loader wasn't made (e.g. model loaded separately)
-            self.log_message("Test loader not found, attempting to create from dataset path...")
+            self.log_message("未找到测试加载器，尝试从数据集路径创建...") # Changed
             try:
                 # Need batch_size, could get from GUI or default
                 _, _, self.test_loader_proper, _, _ = \
@@ -374,18 +374,18 @@ class CVApp:
                                                        batch_size=self.batch_size_var.get(),
                                                        val_split=0) # No val split needed here
                 if not self.test_loader_proper:
-                    messagebox.showerror("Evaluation Error", "Could not create test data loader from the dataset path. Please ensure the 'test' subfolder exists and is structured correctly.")
+                    messagebox.showerror("评估错误", "无法从数据集路径创建测试数据加载器。请确保 'test' 子文件夹存在且结构正确。") # Changed
                     return
-                self.log_message(f"Test loader created. Batches: {len(self.test_loader_proper)}")
+                self.log_message(f"测试加载器已创建。批次数: {len(self.test_loader_proper)}") # Changed
             except Exception as e:
-                messagebox.showerror("Evaluation Error", f"Failed to create test data loader: {e}")
-                self.log_message(f"Error creating test loader: {e}")
+                messagebox.showerror("评估错误", f"创建测试数据加载器失败: {e}") # Changed
+                self.log_message(f"创建测试加载器时出错: {e}") # Changed
                 return
         elif not self.test_loader_proper:
-            messagebox.showerror("Evaluation Error", "No test data available. Please load a dataset with a test set.")
+            messagebox.showerror("评估错误", "无可用测试数据。请加载包含测试集的数据集。") # Changed
             return
 
-        self.log_test_result("Starting evaluation on the test set...")
+        self.log_test_result("开始在测试集上进行评估...") # Changed
 
         # Actual evaluation (using placeholders for now, will be fully implemented later)
         evaluator = app_evaluator.ModelEvaluator(self.current_model_instance, self.test_loader_proper, self.device)
