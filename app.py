@@ -182,33 +182,49 @@ class CVApp:
                 info = app_data_loader.load_dataset_info(path)
 
                 info_text = f"Path: {path}\n"
+                data_load_mode = info.get("data_load_mode", "N/A")
+                info_text += f"Data Loading Mode: {data_load_mode}\n"
                 info_text += f"Classes: {info.get('classes', 'N/A')}\n"
-                info_text += f"Train: {info.get('train_samples', 0)} ({info.get('train_distribution', 'N/A')})\n"
-                info_text += f"Val: {info.get('val_samples', 0)} ({info.get('val_distribution', 'N/A')})\n"
-                info_text += f"Test: {info.get('test_samples', 0)} ({info.get('test_distribution', 'N/A')})\n"
+
+                if data_load_mode == "auto_split":
+                    info_text += f"Total Samples (to be auto-split): {info.get('train_samples', 0)}\n"
+                    info_text += f"Distribution (total): {info.get('train_distribution', 'N/A')}\n"
+                    info_text += "Data will be automatically split into Train/Validation/Test sets.\n"
+                elif data_load_mode == "standard_split":
+                    info_text += f"Train Samples: {info.get('train_samples', 0)} ({info.get('train_distribution', 'N/A')})\n"
+                    info_text += f"Validation Samples: {info.get('val_samples', 0)} ({info.get('val_distribution', 'N/A')})\n"
+                    info_text += f"Test Samples: {info.get('test_samples', 0)} ({info.get('test_distribution', 'N/A')})\n"
+                else: # unsupported or N/A
+                    info_text += "Selected folder structure is not supported for training.\n"
 
                 if info.get('issues'):
                     info_text += "\nIssues Found:\n" + "\n".join(info['issues'])
 
                 self.dataset_info_label.config(text=info_text)
 
-                if not info.get('issues') and info.get('classes'):
+                allow_training = data_load_mode in ["standard_split", "auto_split"] and info.get('classes') and len(info.get('classes', [])) > 0
+
+                if allow_training:
                     self.class_names = info['classes']
                     self.num_classes = len(self.class_names)
-                    if self.num_classes > 0 :
-                        self.train_button.config(state=tk.NORMAL)
-                        self.log_message(f"数据集加载成功。类别: {self.class_names}。类别数量: {self.num_classes}") # Changed
-                        # Automatically update architecture display for new num_classes
-                        self.display_network_architecture()
-                    else:
-                        messagebox.showwarning("数据集警告", "数据集中未找到任何类别。训练功能已禁用。") # Changed
-                        self.train_button.config(state=tk.DISABLED)
+                    self.train_button.config(state=tk.NORMAL)
+                    self.log_message(f"Dataset information loaded. Mode: {data_load_mode}. Classes: {self.class_names}. Num classes: {self.num_classes}.")
+                    self.display_network_architecture() # Update architecture display for new num_classes
                 else:
-                    messagebox.showerror("数据集错误", "无法正确加载数据集信息或未找到类别。请检查日志。") # Changed
+                    self.class_names = []
+                    self.num_classes = 0
                     self.train_button.config(state=tk.DISABLED)
+                    log_msg = "Training disabled: "
+                    if not info.get('classes') or len(info.get('classes', [])) == 0:
+                        log_msg += "No classes found. "
+                    if data_load_mode not in ["standard_split", "auto_split"]:
+                        log_msg += f"Unsupported data load mode ('{data_load_mode}'). "
+
+                    self.log_message(log_msg)
+                    messagebox.showwarning("Dataset Warning", log_msg + "Please check dataset structure and logs.")
 
             except Exception as e:
-                messagebox.showerror("数据集错误", f"处理数据集失败: {e}") # Changed
+                messagebox.showerror("Dataset Processing Error", f"Failed to process dataset: {e}")
                 self.log_message(f"处理数据集时出错: {e}") # Changed
                 self.train_button.config(state=tk.DISABLED)
 
