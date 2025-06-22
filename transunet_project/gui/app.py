@@ -1,5 +1,15 @@
 import sys
 import os
+
+# Add the project root directory (transunet_project) to sys.path
+# This allows imports like 'from models...' to work when app.py is run directly.
+# __file__ is '.../transunet_project/gui/app.py'
+# os.path.dirname(__file__) is '.../transunet_project/gui/'
+# os.path.join(os.path.dirname(__file__), '..') is '.../transunet_project/'
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 import subprocess # For running training/testing scripts
 import threading # For running tasks in background
 import queue # For communication between threads and GUI

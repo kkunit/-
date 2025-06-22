@@ -78,25 +78,27 @@ def create_dataloaders(dataset_path, batch_size, image_size=(224, 224), val_spli
             return len(self.subset)
 
     # Mode detection
+    print(f"[create_dataloaders] Received dataset_path: {dataset_path}, batch_size: {batch_size}, val_split: {val_split}")
     train_dir = os.path.join(dataset_path, 'train')
     test_dir = os.path.join(dataset_path, 'test')
     is_standard_mode = os.path.isdir(train_dir) and os.path.isdir(test_dir)
+    print(f"[create_dataloaders] Is standard mode (train/test dirs exist): {is_standard_mode}")
 
     if is_standard_mode:
-        print(f"Standard mode detected: Using 'train', 'val', 'test' subfolders from {dataset_path}")
+        print(f"[create_dataloaders] Operating in Standard Mode: Using 'train', 'val', 'test' subfolders from {dataset_path}")
         # Load Train dataset
         if os.path.exists(train_dir):
-            # Create a base ImageFolder for train_full to get targets for stratification
-            train_full_for_split = datasets.ImageFolder(train_dir) # No transform yet
+            train_full_for_split = datasets.ImageFolder(train_dir)
             class_names = train_full_for_split.classes
+            print(f"[create_dataloaders] Standard Mode: Found classes in train_dir: {class_names}")
 
             val_dir = os.path.join(dataset_path, 'val')
             if os.path.exists(val_dir) and os.path.isdir(val_dir):
-                print(f"Using existing validation directory: {val_dir}")
+                print(f"[create_dataloaders] Standard Mode: Using existing validation directory: {val_dir}")
                 image_datasets['train'] = TransformedSubset(datasets.ImageFolder(train_dir), data_transforms['train'])
                 image_datasets['val'] = TransformedSubset(datasets.ImageFolder(val_dir), data_transforms['val'])
             elif val_split > 0:
-                print(f"No 'val' directory found. Splitting 'train' data. Validation split: {val_split*100}%.")
+                print(f"[create_dataloaders] Standard Mode: No 'val' directory. Splitting 'train' data. Validation split: {val_split*100}%.")
                 train_indices, val_indices = train_test_split(
                     list(range(len(train_full_for_split))),
                     test_size=val_split,
@@ -107,21 +109,22 @@ def create_dataloaders(dataset_path, batch_size, image_size=(224, 224), val_spli
 
                 image_datasets['train'] = TransformedSubset(train_subset_orig, data_transforms['train'])
                 image_datasets['val'] = TransformedSubset(val_subset_orig, data_transforms['val'])
+                print(f"[create_dataloaders] Standard Mode: Train subset size: {len(image_datasets['train'])}, Val subset size: {len(image_datasets['val'])}")
             else:
-                print("No validation set will be used (no 'val' dir, val_split is 0).")
+                print("[create_dataloaders] Standard Mode: No validation set will be used (no 'val' dir, val_split is 0).")
                 image_datasets['train'] = TransformedSubset(datasets.ImageFolder(train_dir), data_transforms['train'])
                 image_datasets['val'] = None
         else:
-            print(f"Training directory not found: {train_dir}")
-            # Allow continuing if only test set is needed for evaluation later (though GUI might prevent)
+            print(f"[create_dataloaders] Standard Mode: Training directory not found: {train_dir}")
 
         # Load Test dataset
         if os.path.exists(test_dir):
             image_datasets['test'] = TransformedSubset(datasets.ImageFolder(test_dir), data_transforms['test'])
-            if not class_names: # If train_dir didn't exist
+            if not class_names:
                 class_names = image_datasets['test'].subset.dataset.classes if hasattr(image_datasets['test'], 'subset') else []
+                print(f"[create_dataloaders] Standard Mode: Classes inferred from test_dir: {class_names}")
         else:
-            print(f"Test directory not found: {test_dir}")
+            print(f"[create_dataloaders] Standard Mode: Test directory not found: {test_dir}")
             image_datasets['test'] = None
 
         # Create DataLoaders for standard mode
@@ -133,47 +136,43 @@ def create_dataloaders(dataset_path, batch_size, image_size=(224, 224), val_spli
             dataloaders['test'] = DataLoader(image_datasets['test'], batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
 
     else: # Auto-split mode
-        print(f"Auto-split mode detected for path: {dataset_path}")
+        print(f"[create_dataloaders] Operating in Auto-Split Mode for path: {dataset_path}")
         try:
-            full_dataset = datasets.ImageFolder(dataset_path) # No transform initially
+            full_dataset = datasets.ImageFolder(dataset_path)
             if not full_dataset.classes:
                 raise ValueError("No classes found in the selected directory for auto-split mode.")
             class_names = full_dataset.classes
+            print(f"[create_dataloaders] Auto-Split Mode: Found classes: {class_names}. Total samples: {len(full_dataset)}")
 
-            # Stratified split: First, separate out the test set
-            test_set_size = 0.20 # Example: 20% for test
-            # val_split is the proportion of the *remaining* data for validation
-            # e.g. if val_split = 0.15, it means 15% of (100%-20%) = 15% of 80% = 12% of total for validation
-
+            test_set_size = 0.20
             indices = list(range(len(full_dataset)))
             targets = full_dataset.targets
+            print(f"[create_dataloaders] Auto-Split Mode: Test set size: {test_set_size*100}%, Val split (from remaining): {val_split*100}%")
 
-            if len(set(targets)) < 2 : # Cannot stratify with only one class represented
-                print("Warning: Only one class found or samples for only one class. Using non-stratified split.")
+
+            if len(set(targets)) < 2 :
+                print("[create_dataloaders] Auto-Split Mode: Warning: Only one class found or samples for only one class. Using non-stratified split.")
                 trainval_idx, test_idx = train_test_split(indices, test_size=test_set_size, shuffle=True, random_state=42)
                 if val_split > 0 and len(trainval_idx) > 1 :
                      train_idx, val_idx = train_test_split(trainval_idx, test_size=val_split, shuffle=True, random_state=42)
                 else:
                      train_idx = trainval_idx
                      val_idx = []
-
-            else: # Stratified split
+            else:
                 trainval_idx, test_idx = train_test_split(indices, test_size=test_set_size, stratify=targets, shuffle=True, random_state=42)
+                print(f"[create_dataloaders] Auto-Split Mode: After test split: trainval_idx size {len(trainval_idx)}, test_idx size {len(test_idx)}")
 
-                # Stratify the train/val split from the remaining trainval_idx
-                if val_split > 0 and len(trainval_idx) > 1 : # Ensure there's something to split
-                    # Adjust val_split if trainval_idx is too small relative to what val_split would take
-                    # For example, if val_split is 0.25, but trainval_idx has only 3 samples for a class.
-                    # sklearn train_test_split handles small n_splits for stratify by possibly returning empty splits.
+                if val_split > 0 and len(trainval_idx) > 1 :
                     trainval_targets = [targets[i] for i in trainval_idx]
-                    if len(set(trainval_targets)) < 2 or len(trainval_idx) < 2 : # Check if stratification is possible for train/val
-                        print("Warning: Not enough samples or classes in train/val portion for stratification. Using non-stratified train/val split.")
+                    if len(set(trainval_targets)) < 2 or len(trainval_idx) < 2 :
+                        print("[create_dataloaders] Auto-Split Mode: Warning: Not enough samples or classes in train/val portion for stratification. Using non-stratified train/val split.")
                         train_idx, val_idx = train_test_split(trainval_idx, test_size=val_split, shuffle=True, random_state=42)
                     else:
                         train_idx, val_idx = train_test_split(trainval_idx, test_size=val_split, stratify=trainval_targets, shuffle=True, random_state=42)
-                else: # No validation split needed from trainval_idx or trainval_idx too small
+                else:
                     train_idx = trainval_idx
                     val_idx = []
+                print(f"[create_dataloaders] Auto-Split Mode: After val split: train_idx size {len(train_idx)}, val_idx size {len(val_idx)}")
 
 
             image_datasets['train'] = TransformedSubset(Subset(full_dataset, train_idx), data_transforms['train'])
@@ -182,28 +181,27 @@ def create_dataloaders(dataset_path, batch_size, image_size=(224, 224), val_spli
             else:
                 image_datasets['val'] = None
             image_datasets['test'] = TransformedSubset(Subset(full_dataset, test_idx), data_transforms['test'])
+            print(f"[create_dataloaders] Auto-Split Mode: Train subset type: {type(image_datasets['train'])}, Test subset type: {type(image_datasets['test'])}")
+
 
             dataloaders['train'] = DataLoader(image_datasets['train'], batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
             if image_datasets['val']:
                 dataloaders['val'] = DataLoader(image_datasets['val'], batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
             dataloaders['test'] = DataLoader(image_datasets['test'], batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=True)
 
-            print(f"Auto-split complete. Train: {len(train_idx)}, Val: {len(val_idx)}, Test: {len(test_idx)} samples.")
+            print(f"[create_dataloaders] Auto-split complete. Train: {len(train_idx)}, Val: {len(val_idx)}, Test: {len(test_idx)} samples.")
 
         except Exception as e:
-            print(f"Error during auto-split data loading: {e}")
-            # Return empty or None DataLoaders
+            print(f"[create_dataloaders] Error during auto-split data loading: {e}")
             return None, None, None, [], {}
 
 
     if not class_names:
-        print("Could not determine class names (e.g., no train or test data found, or auto_split failed).")
-        # Potentially load from a config or raise error if truly critical path.
-        # For now, GUI will show this based on load_dataset_info's output.
+        print("[create_dataloaders] Could not determine class names.")
 
     dataset_sizes = {x: len(image_datasets[x]) for x in ['train', 'val', 'test'] if image_datasets.get(x) is not None}
-    print(f"Final dataset sizes: {dataset_sizes}")
-    print(f"Class names: {class_names}")
+    print(f"[create_dataloaders] Final dataset sizes: {dataset_sizes}")
+    print(f"[create_dataloaders] Final class names: {class_names}")
 
     return dataloaders['train'], dataloaders['val'], dataloaders['test'], class_names, dataset_sizes
 
@@ -220,34 +218,39 @@ def load_dataset_info(dataset_path):
         "classes": [],
         "train_distribution": "N/A", "val_distribution": "N/A", "test_distribution": "N/A",
         "issues": [],
-        "auto_split_mode": False, # New flag
-        "data_load_mode": "N/A" # 'standard_split', 'auto_split', 'unsupported'
+        "auto_split_mode": False,
+        "data_load_mode": "N/A"
     }
+    print(f"[load_dataset_info] Received dataset_path: {dataset_path}")
 
     train_dir = os.path.join(dataset_path, 'train')
     test_dir = os.path.join(dataset_path, 'test')
-    # val_dir is optional, presence of train and test signifies standard mode primarily
-
     is_standard_mode = os.path.isdir(train_dir) and os.path.isdir(test_dir)
 
     image_extensions = ('.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff')
+    print(f"[load_dataset_info] Checking for standard mode. train_dir exists: {os.path.isdir(train_dir)}, test_dir exists: {os.path.isdir(test_dir)}. Is standard mode: {is_standard_mode}")
 
     if is_standard_mode:
+        print("[load_dataset_info] Operating in Standard Mode (train/test/val subfolders).")
         info["data_load_mode"] = "standard_split"
         found_classes = set()
         for phase in ['train', 'val', 'test']:
             phase_path = os.path.join(dataset_path, phase)
+            print(f"[load_dataset_info] Standard Mode: Checking phase '{phase}' at path '{phase_path}'")
             if not os.path.exists(phase_path) or not os.path.isdir(phase_path):
-                if phase == 'val': # Val is optional
+                if phase == 'val':
                     info['issues'].append(f"Optional directory not found: {phase_path}")
+                    print(f"[load_dataset_info] Standard Mode: Optional phase '{phase}' dir not found.")
                 else:
                     info['issues'].append(f"Required directory not found or not a directory: {phase_path}")
+                    print(f"[load_dataset_info] Standard Mode: Required phase '{phase}' dir not found.")
                 continue
 
             phase_samples = 0
             phase_distribution = {}
             try:
                 current_classes = sorted([d for d in os.listdir(phase_path) if os.path.isdir(os.path.join(phase_path, d))])
+                print(f"[load_dataset_info] Standard Mode: Phase '{phase}', found potential class folders: {current_classes}")
                 if not current_classes:
                     info['issues'].append(f"No class subdirectories found in {phase_path}")
                     continue
@@ -262,6 +265,7 @@ def load_dataset_info(dataset_path):
                             phase_samples += num_images
                         else:
                             info['issues'].append(f"No images found in class directory {class_path}")
+                            print(f"[load_dataset_info] Standard Mode: No images in {class_path}")
                     except OSError as e:
                         info['issues'].append(f"Could not read class directory {class_path}: {e}")
 
@@ -275,20 +279,29 @@ def load_dataset_info(dataset_path):
              info['issues'].append(f"No classes found across train, val, test directories in standard mode.")
         if info['val_samples'] == 0 and info['train_samples'] > 0 :
             info['val_distribution'] = "Will be split from train if val_split > 0 during dataloader creation."
+        print(f"[load_dataset_info] Standard Mode: Final classes: {info['classes']}, Train samples: {info['train_samples']}, Val samples: {info['val_samples']}, Test samples: {info['test_samples']}")
 
-    else: # Try flexible auto-split mode
+    else:
+        print("[load_dataset_info] Standard mode not detected. Attempting Auto-Split Mode.")
         info["auto_split_mode"] = True
         info["data_load_mode"] = "auto_split"
 
-        potential_classes = sorted([d for d in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, d))])
+        potential_classes = []
+        try:
+            potential_classes = sorted([d for d in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, d))])
+        except OSError as e:
+            info['issues'].append(f"Error reading directory {dataset_path} for auto-split: {e}")
+            info["data_load_mode"] = "unsupported"
+
+        print(f"[load_dataset_info] Auto-Split Mode: Found potential class subdirectories: {potential_classes}")
         found_classes_flexible = set()
         total_samples_flexible = 0
         flexible_distribution = {}
 
-        if not potential_classes:
+        if not potential_classes and info["data_load_mode"] != "unsupported":
             info['issues'].append(f"No subdirectories found in {dataset_path} to be used as classes for auto-split mode.")
-            info["data_load_mode"] = "unsupported" # No class subfolders
-        else:
+            info["data_load_mode"] = "unsupported"
+        elif info["data_load_mode"] != "unsupported":
             for class_name in potential_classes:
                 class_path = os.path.join(dataset_path, class_name)
                 try:
@@ -297,43 +310,44 @@ def load_dataset_info(dataset_path):
                         found_classes_flexible.add(class_name)
                         flexible_distribution[class_name] = num_images
                         total_samples_flexible += num_images
+                        print(f"[load_dataset_info] Auto-Split Mode: Class '{class_name}' has {num_images} images.")
                     else:
                         info['issues'].append(f"No images found in potential class directory {class_path} for auto-split.")
+                        print(f"[load_dataset_info] Auto-Split Mode: No images in {class_path}")
                 except OSError as e:
                     info['issues'].append(f"Could not read potential class directory {class_path}: {e}")
 
             if found_classes_flexible:
                 info['classes'] = sorted(list(found_classes_flexible))
-                # In auto-split mode, 'train_samples' will represent total samples before split.
-                # Actual train/val/test counts determined later in create_dataloaders.
                 info['train_samples'] = total_samples_flexible
                 info['train_distribution'] = ", ".join([f"{k}: {v}" for k,v in flexible_distribution.items()])
-                info['val_samples'] = 0 # Will be determined by split
-                info['test_samples'] = 0 # Will be determined by split
+                info['val_samples'] = 0
+                info['test_samples'] = 0
                 info['val_distribution'] = "To be auto-split from total data."
                 info['test_distribution'] = "To be auto-split from total data."
+                print(f"[load_dataset_info] Auto-Split Mode: Final classes: {info['classes']}, Total samples: {info['train_samples']}")
             else:
                 info['issues'].append(f"No images found in any subdirectories of {dataset_path} for auto-split mode.")
-                info["data_load_mode"] = "unsupported" # No usable class subfolders
+                info["data_load_mode"] = "unsupported"
 
-    # Final check: if no classes found by any mode, it's unsupported
     if not info['classes'] and info["data_load_mode"] != "unsupported":
-        # This case might occur if standard mode dirs exist but are empty of class folders.
         info['issues'].append(f"No classes with images found in the dataset at {dataset_path}.")
         info["data_load_mode"] = "unsupported"
 
     if info["data_load_mode"] == "unsupported":
-         # Check if there are images directly in the root folder (flat structure)
+        print(f"[load_dataset_info] Mode determined as 'unsupported'. Checking for flat image structure.")
         try:
             flat_images_count = len([name for name in os.listdir(dataset_path) if os.path.isfile(os.path.join(dataset_path, name)) and name.lower().endswith(image_extensions)])
             if flat_images_count > 0:
                 info['issues'].append(f"Found {flat_images_count} images directly in the root folder. This flat structure is not supported for training. Please organize images into class subfolders, or use train/test/val subfolders.")
-            elif not potential_classes and not is_standard_mode : # also no subfolders at all
+                print(f"[load_dataset_info] Found {flat_images_count} flat images. Not supported for training.")
+            elif not potential_classes and not is_standard_mode :
                  info['issues'].append(f"The selected folder does not contain train/test/val subdirectories, nor does it contain class subdirectories with images. It also does not contain images directly for training to be possible.")
+                 print(f"[load_dataset_info] Folder empty or no valid structure/images found.")
         except OSError as e:
             info['issues'].append(f"Could not read the selected directory {dataset_path}: {e}")
 
-
+    print(f"[load_dataset_info] Final info before return: {info}")
     return info
 
 if __name__ == '__main__':

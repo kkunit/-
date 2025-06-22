@@ -5,6 +5,7 @@ import torch # For device detection
 
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from PIL import Image, ImageTk
 
 # Import modules from src
 from src import utils as app_utils
@@ -27,6 +28,7 @@ class CVApp:
         self.class_names = []
         self.num_classes = 0
         self.dataset_sizes = {}
+        self.adhoc_test_image_paths = [] # For storing paths of individually selected images
 
         if torch.cuda.is_available():
             self.device = torch.device("cuda")
@@ -77,11 +79,11 @@ class CVApp:
         middle_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         arch_frame = ttk.LabelFrame(middle_frame, text="网络架构") # Changed
-        arch_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self.arch_display = scrolledtext.ScrolledText(arch_frame, height=15, width=45, wrap=tk.WORD, state=tk.DISABLED)
+        arch_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5) # Keep this expandable as summary can be long
+        self.arch_display = scrolledtext.ScrolledText(arch_frame, height=8, width=45, wrap=tk.WORD, state=tk.DISABLED) # Reduced height
         self.arch_display.pack(expand=True, fill=tk.BOTH, padx=5, pady=5)
 
-        params_frame = ttk.LabelFrame(middle_frame, text="训练参数") # Changed
+        params_frame = ttk.LabelFrame(middle_frame, text="训练参数")
         params_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5, pady=5)
 
         ttk.Label(params_frame, text="优化器:").grid(row=0, column=0, padx=5, pady=3, sticky=tk.W) # Changed
@@ -112,20 +114,19 @@ class CVApp:
         self.save_model_button.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky=tk.EW)
 
         progress_frame = ttk.LabelFrame(tab, text="训练过程与日志") # Changed
-        progress_frame.pack(fill=tk.X, padx=10, pady=5) # Reduced pady
-        self.progress_display = scrolledtext.ScrolledText(progress_frame, height=8, wrap=tk.WORD, state=tk.DISABLED) # Reduced height
+        progress_frame.pack(fill=tk.X, padx=10, pady=5)
+        self.progress_display = scrolledtext.ScrolledText(progress_frame, height=5, wrap=tk.WORD, state=tk.DISABLED) # Aggressively Reduced height
         self.progress_display.pack(expand=True, fill=tk.X, padx=5, pady=5)
 
         # --- Training Curves Frame ---
-        training_curves_frame = ttk.LabelFrame(tab, text="训练曲线 (轮次 vs 指标)")
-        training_curves_frame.pack(fill=tk.BOTH, expand=False, padx=10, pady=5) # expand=False
+        training_curves_frame = ttk.LabelFrame(tab, text="Training Curves (Epoch vs. Metric)") # English
+        training_curves_frame.pack(fill=tk.X, expand=False, padx=10, pady=5) # fill=tk.X
 
-        fig_train_curves = Figure(figsize=(7, 2.5), dpi=100) # Reduced size
+        fig_train_curves = Figure(figsize=(7, 2), dpi=75) # Aggressively Reduced size & DPI
         self.training_curves_canvas = FigureCanvasTkAgg(fig_train_curves, master=training_curves_frame)
-        self.training_curves_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.X, expand=False) # expand=False, fill=tk.X
-        # Add placeholder plots or text (will be cleared by actual plot function)
+        self.training_curves_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.X, expand=False)
         train_ax1 = fig_train_curves.add_subplot(121)
-        train_ax1.set_title("Loss") # Placeholder, will be in English later
+        train_ax1.set_title("Loss")
         train_ax1.set_xlabel("Epoch")
         train_ax1.set_ylabel("Loss")
         train_ax2 = fig_train_curves.add_subplot(122)
@@ -143,29 +144,46 @@ class CVApp:
 
         # Controls for testing
         test_controls_frame = ttk.Frame(testing_main_frame) # This frame holds buttons
-        test_controls_frame.pack(fill=tk.X, pady=2) # Reduced pady
+        test_controls_frame.pack(fill=tk.X, pady=2)
         self.load_model_button = ttk.Button(test_controls_frame, text="加载已训练模型", command=self.load_trained_model)
         self.load_model_button.pack(side=tk.LEFT, padx=5, pady=2)
-        self.select_test_images_button = ttk.Button(test_controls_frame, text="选择测试图片", command=self.select_test_images, state=tk.DISABLED)
-        self.select_test_images_button.pack(side=tk.LEFT, padx=5, pady=2)
-        self.recognize_button = ttk.Button(test_controls_frame, text="运行评估", command=self.recognize_images, state=tk.DISABLED)
+
+        self.select_adhoc_images_button = ttk.Button(test_controls_frame, text="加载单张/多张图片测试", command=self.select_test_images, state=tk.DISABLED) # Renamed
+        self.select_adhoc_images_button.pack(side=tk.LEFT, padx=5, pady=2)
+
+        self.predict_selected_button = ttk.Button(test_controls_frame, text="对选中图片进行预测", command=self.predict_on_selected_images, state=tk.DISABLED) # New button
+        self.predict_selected_button.pack(side=tk.LEFT, padx=5, pady=2)
+
+        self.recognize_button = ttk.Button(test_controls_frame, text="运行整体评估(用测试集)", command=self.recognize_images, state=tk.DISABLED) # Clarified name
         self.recognize_button.pack(side=tk.LEFT, padx=5, pady=2)
 
-        # Test results text display
-        self.test_results_display = scrolledtext.ScrolledText(testing_main_frame, height=6, wrap=tk.WORD, state=tk.DISABLED) # Further Reduced height
-        self.test_results_display.pack(expand=False, fill=tk.X, padx=5, pady=5) # expand=False
+        # Frame for single image display and prediction
+        single_image_results_frame = ttk.Frame(testing_main_frame)
+        single_image_results_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        self.single_image_display_label = ttk.Label(single_image_results_frame, text="Selected Image Appears Here")
+        self.single_image_display_label.pack(side=tk.LEFT, padx=5, pady=2)
+        # Set a fixed size for the image display area or it might resize unpredictably
+        # self.single_image_display_label.config(width=200, height=200) # Example, adjust as needed
+
+        self.single_image_prediction_text = scrolledtext.ScrolledText(single_image_results_frame, height=3, width=40, wrap=tk.WORD, state=tk.DISABLED)
+        self.single_image_prediction_text.pack(side=tk.LEFT, padx=5, pady=2, fill=tk.BOTH, expand=True)
+
+
+        # Test results text display (for overall evaluation)
+        self.test_results_display = scrolledtext.ScrolledText(testing_main_frame, height=4, wrap=tk.WORD, state=tk.DISABLED)
+        self.test_results_display.pack(expand=False, fill=tk.X, padx=5, pady=5)
 
         # --- Evaluation Metrics Plot Frame ---
-        eval_metrics_plot_frame = ttk.LabelFrame(testing_main_frame, text="评估指标图表")
-        eval_metrics_plot_frame.pack(fill=tk.X, expand=False, padx=5, pady=5) # fill=tk.X, expand=False
+        eval_metrics_plot_frame = ttk.LabelFrame(testing_main_frame, text="Evaluation Metric Charts") # English
+        eval_metrics_plot_frame.pack(fill=tk.X, expand=False, padx=5, pady=5)
 
-        fig_eval_metrics = Figure(figsize=(7, 3), dpi=100) # Reduced size
+        fig_eval_metrics = Figure(figsize=(7, 2.5), dpi=75) # Aggressively Reduced size & DPI
         self.evaluation_metrics_canvas = FigureCanvasTkAgg(fig_eval_metrics, master=eval_metrics_plot_frame)
-        self.evaluation_metrics_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.X, expand=False) # expand=False, fill=tk.X
+        self.evaluation_metrics_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.X, expand=False)
 
-        # Placeholder plots (will be cleared by actual plot function)
         eval_ax1 = fig_eval_metrics.add_subplot(131)
-        eval_ax1.set_title("CM") # Placeholder
+        eval_ax1.set_title("CM")
         eval_ax2 = fig_eval_metrics.add_subplot(132)
         eval_ax2.set_title("ROC") # Placeholder
         eval_ax3 = fig_eval_metrics.add_subplot(133)
@@ -183,6 +201,11 @@ class CVApp:
 
                 info_text = f"Path: {path}\n"
                 data_load_mode = info.get("data_load_mode", "N/A")
+                # Log the full info dictionary for debugging from GUI log panel
+                self.log_message(f"Data loader info: {info}")
+
+                info_text = f"Path: {path}\n"
+                data_load_mode = info.get("data_load_mode", "N/A")
                 info_text += f"Data Loading Mode: {data_load_mode}\n"
                 info_text += f"Classes: {info.get('classes', 'N/A')}\n"
 
@@ -194,11 +217,11 @@ class CVApp:
                     info_text += f"Train Samples: {info.get('train_samples', 0)} ({info.get('train_distribution', 'N/A')})\n"
                     info_text += f"Validation Samples: {info.get('val_samples', 0)} ({info.get('val_distribution', 'N/A')})\n"
                     info_text += f"Test Samples: {info.get('test_samples', 0)} ({info.get('test_distribution', 'N/A')})\n"
-                else: # unsupported or N/A
-                    info_text += "Selected folder structure is not supported for training.\n"
+                # No specific message for "unsupported" here, as it's handled by allow_training check and issues list
 
-                if info.get('issues'):
-                    info_text += "\nIssues Found:\n" + "\n".join(info['issues'])
+                issues = info.get('issues', [])
+                if issues:
+                    info_text += "\nIssues Found:\n" + "\n".join(issues)
 
                 self.dataset_info_label.config(text=info_text)
 
@@ -208,23 +231,27 @@ class CVApp:
                     self.class_names = info['classes']
                     self.num_classes = len(self.class_names)
                     self.train_button.config(state=tk.NORMAL)
-                    self.log_message(f"Dataset information loaded. Mode: {data_load_mode}. Classes: {self.class_names}. Num classes: {self.num_classes}.")
-                    self.display_network_architecture() # Update architecture display for new num_classes
+                    self.log_message(f"Dataset information loaded. Mode: {data_load_mode}. Classes: {self.class_names}. Num classes: {self.num_classes}. Training enabled.")
+                    self.display_network_architecture()
                 else:
                     self.class_names = []
                     self.num_classes = 0
                     self.train_button.config(state=tk.DISABLED)
-                    log_msg = "Training disabled: "
-                    if not info.get('classes') or len(info.get('classes', [])) == 0:
-                        log_msg += "No classes found. "
-                    if data_load_mode not in ["standard_split", "auto_split"]:
-                        log_msg += f"Unsupported data load mode ('{data_load_mode}'). "
 
-                    self.log_message(log_msg)
-                    messagebox.showwarning("Dataset Warning", log_msg + "Please check dataset structure and logs.")
+                    error_summary = "Training disabled. Reasons:\n"
+                    if not info.get('classes') or len(info.get('classes', [])) == 0:
+                        error_summary += "- No classes found or classes could not be determined.\n"
+                    if data_load_mode not in ["standard_split", "auto_split"]:
+                        error_summary += f"- Data structure is unsupported (mode: '{data_load_mode}').\n"
+                    if issues:
+                        error_summary += "\nSpecific issues from data loader:\n" + "\n".join([f"  - {issue}" for issue in issues])
+
+                    self.log_message(error_summary.replace("\n", " ")) # Log a one-liner version
+                    messagebox.showerror("Dataset Error", error_summary + "\nPlease check dataset structure and logs for details.")
 
             except Exception as e:
                 messagebox.showerror("Dataset Processing Error", f"Failed to process dataset: {e}")
+                self.log_message(f"Error processing dataset: {e}")
                 self.log_message(f"处理数据集时出错: {e}") # Changed
                 self.train_button.config(state=tk.DISABLED)
 
@@ -417,21 +444,125 @@ class CVApp:
                 messagebox.showerror("加载错误", f"无法加载模型: {e}") # Changed
 
 
-    def select_test_images(self):
-        # This function is more for selecting individual images for ad-hoc testing.
-        # The main evaluation will use the test set from the loaded dataset path.
+    def select_test_images(self): # Now for ad-hoc image selection for single prediction
         filepaths = filedialog.askopenfilenames(
-            title="选择测试图片",  # Changed
-            filetypes=[("图片文件", "*.jpg *.jpeg *.png *.bmp"), ("所有文件", "*.*")] # Changed
+            title="选择单张或多张图片进行即时预测",
+            filetypes=[("图片文件", "*.jpg *.jpeg *.png *.bmp"), ("所有文件", "*.*")]
         )
         if filepaths:
-            self.log_test_result(f"选择了 {len(filepaths)} 张图片用于即时测试 (模拟): {filepaths[0]}...") # Changed
-            # Store these filepaths if you plan to implement single/multi-image prediction display
-            # self.adhoc_test_image_paths = filepaths
-            messagebox.showinfo("图片已选择", f"已选择 {len(filepaths)} 张图片。此步骤中未完全实现对这些图片的即时预测，评估功能将使用测试集。") # Changed
+            self.adhoc_test_image_paths = list(filepaths)
+            self.log_message(f"Loaded {len(self.adhoc_test_image_paths)} image(s) for single prediction. First: {self.adhoc_test_image_paths[0]}")
+            self.predict_selected_button.config(state=tk.NORMAL)
 
+            # Display the first selected image
+            try:
+                img_path = self.adhoc_test_image_paths[0]
+                img = Image.open(img_path)
+                # Resize for display label, keeping aspect ratio
+                img.thumbnail((200, 200)) # Resize to fit in a 200x200 box
+                photo = ImageTk.PhotoImage(img)
 
-    def recognize_images(self): # This is the "Run Evaluation" button
+                self.single_image_display_label.config(image=photo)
+                self.single_image_display_label.image = photo # Keep a reference!
+            except Exception as e:
+                self.log_message(f"Error displaying selected image: {e}")
+                self.single_image_display_label.config(image=None, text="Error displaying image.")
+                self.single_image_display_label.image = None
+
+            # Clear previous single prediction text
+            self.single_image_prediction_text.config(state=tk.NORMAL)
+            self.single_image_prediction_text.delete(1.0, tk.END)
+            self.single_image_prediction_text.insert(tk.END, "Image(s) loaded. Click 'Predict on Selected Image(s)'.")
+            self.single_image_prediction_text.config(state=tk.DISABLED)
+        else:
+            self.adhoc_test_image_paths = []
+            self.predict_selected_button.config(state=tk.DISABLED)
+            self.single_image_display_label.config(image=None, text="No image selected.")
+            self.single_image_display_label.image = None
+            self.single_image_prediction_text.config(state=tk.NORMAL)
+            self.single_image_prediction_text.delete(1.0, tk.END)
+            self.single_image_prediction_text.config(state=tk.DISABLED)
+
+    def predict_on_selected_images(self):
+        if not self.current_model_instance:
+            messagebox.showerror("Error", "No model loaded or trained. Please load or train a model first.")
+            self.log_message("Prediction failed: Model not available.")
+            return
+        if not self.adhoc_test_image_paths:
+            messagebox.showinfo("Info", "No images selected for prediction. Please load images first.")
+            self.log_message("Prediction skipped: No ad-hoc images loaded.")
+            return
+        if not self.class_names:
+            messagebox.showerror("Error", "Class names not available. Please load a dataset first to define classes.")
+            self.log_message("Prediction failed: Class names not defined (load dataset).")
+            return
+
+        self.log_message(f"Starting prediction for {len(self.adhoc_test_image_paths)} selected image(s)...")
+
+        # Prepare model and transforms
+        self.current_model_instance.eval()
+        try:
+            test_transforms = app_data_loader.get_data_transforms()['test']
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to get data transformations: {e}")
+            self.log_message(f"Prediction failed: Could not get test transformations: {e}")
+            return
+
+        results_summary = []
+
+        for i, img_path in enumerate(self.adhoc_test_image_paths):
+            try:
+                image = Image.open(img_path).convert('RGB')
+
+                # Display the current image being processed if it's the first one,
+                # or if we enhance UI later to show multiple.
+                if i == 0:
+                    img_display = image.copy()
+                    img_display.thumbnail((200, 200)) # Resize for display label
+                    photo = ImageTk.PhotoImage(img_display)
+                    self.single_image_display_label.config(image=photo)
+                    self.single_image_display_label.image = photo # Keep reference
+
+                input_tensor = test_transforms(image)
+                input_batch = input_tensor.unsqueeze(0).to(self.device)
+
+                with torch.no_grad():
+                    outputs = self.current_model_instance(input_batch)
+                    probabilities = torch.softmax(outputs, dim=1)
+                    confidence, predicted_idx = torch.max(probabilities, 1)
+
+                predicted_class = self.class_names[predicted_idx.item()]
+                conf_score = confidence.item()
+
+                result_str = f"Image: {os.path.basename(img_path)}\nPredicted: {predicted_class} (Confidence: {conf_score:.4f})"
+                results_summary.append(result_str)
+                self.log_message(result_str) # Log each prediction to main log
+
+                if i == 0: # Update dedicated single image prediction text area for the first image
+                    self.single_image_prediction_text.config(state=tk.NORMAL)
+                    self.single_image_prediction_text.delete(1.0, tk.END)
+                    self.single_image_prediction_text.insert(tk.END, result_str)
+                    self.single_image_prediction_text.config(state=tk.DISABLED)
+
+            except Exception as e:
+                err_msg = f"Error predicting on image {img_path}: {e}"
+                self.log_message(err_msg)
+                results_summary.append(err_msg)
+                if i == 0: # Show error for the first image in its dedicated text area
+                    self.single_image_prediction_text.config(state=tk.NORMAL)
+                    self.single_image_prediction_text.delete(1.0, tk.END)
+                    self.single_image_prediction_text.insert(tk.END, err_msg)
+                    self.single_image_prediction_text.config(state=tk.DISABLED)
+
+        # Log all results to the main test results display as well
+        self.log_test_result("\n--- Single Image(s) Prediction Results ---")
+        for res in results_summary:
+            self.log_test_result(res)
+        self.log_test_result("--- End of Single Image(s) Prediction ---")
+
+        messagebox.showinfo("Prediction Complete", f"Finished predicting on {len(self.adhoc_test_image_paths)} image(s). Results logged.")
+
+    def recognize_images(self): # This is the "Run Evaluation" button for the whole test set
         if not self.current_model_instance:
              messagebox.showerror("错误", "尚未加载或训练模型。") # Changed
              return
