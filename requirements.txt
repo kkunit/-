@@ -1,0 +1,8 @@
+torch>=1.8.0
+torchvision>=0.9.0
+scikit-learn>=0.24.0
+matplotlib>=3.3.0
+numpy>=1.19.0
+torchinfo>=1.5.0 # Optional, for model summary
+# Pillow is an indirect dependency of torchvision for image loading/transforms
+Pillow>=7.0.0

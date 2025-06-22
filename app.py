@@ -3,6 +3,9 @@ from tkinter import ttk, filedialog, scrolledtext
 from tkinter import messagebox
 import torch # For device detection
 
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
 # Import modules from src
 from src import utils as app_utils
 from src import data_loader as app_data_loader
@@ -14,7 +17,7 @@ class CVApp:
     def __init__(self, root):
         self.root = root
         self.root.title("图像分类与分割工具") # Changed to Chinese
-        self.root.geometry("1000x850") # Slightly increased height for logs
+        self.root.geometry("1000x950") # Increased height for plots
 
         # Model related attributes
         self.current_model_instance = None # Will hold the instantiated model
@@ -113,9 +116,32 @@ class CVApp:
         self.progress_display = scrolledtext.ScrolledText(progress_frame, height=10, wrap=tk.WORD, state=tk.DISABLED)
         self.progress_display.pack(expand=True, fill=tk.X, padx=5, pady=5)
 
-        testing_frame = ttk.LabelFrame(tab, text="模型测试与评估") # Changed
-        testing_frame.pack(fill=tk.X, padx=10, pady=10)
-        test_controls_frame = ttk.Frame(testing_frame)
+        # --- Training Curves Frame ---
+        training_curves_frame = ttk.LabelFrame(tab, text="训练曲线 (轮次 vs 指标)")
+        training_curves_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        fig_train_curves = Figure(figsize=(8, 3), dpi=100) # Adjusted size
+        self.training_curves_canvas = FigureCanvasTkAgg(fig_train_curves, master=training_curves_frame)
+        self.training_curves_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        # Add placeholder plots or text
+        train_ax1 = fig_train_curves.add_subplot(121)
+        train_ax1.set_title("Loss")
+        train_ax1.set_xlabel("Epoch")
+        train_ax1.set_ylabel("Loss")
+        train_ax2 = fig_train_curves.add_subplot(122)
+        train_ax2.set_title("Accuracy")
+        train_ax2.set_xlabel("Epoch")
+        train_ax2.set_ylabel("Accuracy")
+        fig_train_curves.tight_layout()
+        self.training_curves_canvas.draw()
+
+
+        # --- Testing and Evaluation Frame (Combined) ---
+        testing_main_frame = ttk.LabelFrame(tab, text="模型测试与评估") # Changed
+        testing_main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # Controls for testing
+        test_controls_frame = ttk.Frame(testing_main_frame)
         test_controls_frame.pack(fill=tk.X, pady=5)
         self.load_model_button = ttk.Button(test_controls_frame, text="加载已训练模型", command=self.load_trained_model) # Changed
         self.load_model_button.pack(side=tk.LEFT, padx=5)
@@ -123,8 +149,28 @@ class CVApp:
         self.select_test_images_button.pack(side=tk.LEFT, padx=5)
         self.recognize_button = ttk.Button(test_controls_frame, text="运行评估", command=self.recognize_images, state=tk.DISABLED) # Changed
         self.recognize_button.pack(side=tk.LEFT, padx=5)
-        self.test_results_display = scrolledtext.ScrolledText(testing_frame, height=12, wrap=tk.WORD, state=tk.DISABLED)
+
+        # Test results text display
+        self.test_results_display = scrolledtext.ScrolledText(testing_main_frame, height=8, wrap=tk.WORD, state=tk.DISABLED) # Reduced height
         self.test_results_display.pack(expand=True, fill=tk.X, padx=5, pady=5)
+
+        # --- Evaluation Metrics Plot Frame ---
+        # This frame is now part of the larger "Testing and Evaluation" frame
+        eval_metrics_plot_frame = ttk.LabelFrame(testing_main_frame, text="评估指标图表")
+        eval_metrics_plot_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        fig_eval_metrics = Figure(figsize=(8, 3.5), dpi=100) # Adjusted size
+        self.evaluation_metrics_canvas = FigureCanvasTkAgg(fig_eval_metrics, master=eval_metrics_plot_frame)
+        self.evaluation_metrics_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+        # Add placeholder plots or text
+        eval_ax1 = fig_eval_metrics.add_subplot(131) # 1 row, 3 cols, 1st plot
+        eval_ax1.set_title("混淆矩阵")
+        eval_ax2 = fig_eval_metrics.add_subplot(132)
+        eval_ax2.set_title("ROC曲线")
+        eval_ax3 = fig_eval_metrics.add_subplot(133)
+        eval_ax3.set_title("PR曲线")
+        fig_eval_metrics.tight_layout()
+        self.evaluation_metrics_canvas.draw()
 
     def browse_and_load_dataset(self):
         path = filedialog.askdirectory()
@@ -261,6 +307,15 @@ class CVApp:
                     best_val_acc = max(history['val_acc'])
                     self.log_progress(f"Best validation accuracy during training: {best_val_acc:.4f}")
 
+                # Plot training curves
+                if history and not history.get("error"):
+                    self.log_progress("Plotting training curves...")
+                    app_utils.plot_training_curves(self.training_curves_canvas, history)
+                    self.log_progress("Training curves displayed.")
+                else:
+                    self.log_progress("Skipping training curve plotting due to training error or no history.")
+
+
                 self.save_model_button.config(state=tk.NORMAL)
                 self.recognize_button.config(state=tk.NORMAL)
 
@@ -387,19 +442,28 @@ class CVApp:
 
         self.log_test_result("开始在测试集上进行评估...") # Changed
 
-        # Actual evaluation (using placeholders for now, will be fully implemented later)
-        evaluator = app_evaluator.ModelEvaluator(self.current_model_instance, self.test_loader_proper, self.device)
-        # metrics = evaluator.evaluate() # This will be the actual call
+        # Instantiate ModelEvaluator with class_names
+        evaluator = app_evaluator.ModelEvaluator(
+            self.current_model_instance,
+            self.test_loader_proper,
+            self.device,
+            class_names=self.class_names # Pass class names
+        )
 
-        # Using dummy metrics for now from evaluator.py
-        metrics = evaluator.dummy_metrics()
-        summary = evaluator.get_metrics_summary(metrics)
+        self.log_test_result("正在计算评估指标...") # Calculating evaluation metrics...
+        metrics = evaluator.evaluate() # This is the actual call
+
+        self.log_test_result("评估指标计算完成。") # Evaluation metrics calculation complete.
+
+        summary = evaluator.get_metrics_summary(metrics) # get_metrics_summary now uses class_names from metrics
         self.log_test_result(summary)
 
-        # Placeholder for plotting curves - will require matplotlib canvas integration
-        # app_utils.plot_performance_metrics_on_canvas(self.test_figure_canvas, metrics)
-        self.log_test_result("\nEvaluation finished (using simulated metrics for now).")
-        self.log_test_result("Actual metrics and curve plotting will be implemented in later steps.")
+        # Plot evaluation metrics
+        self.log_test_result("正在绘制评估图表...") # Plotting evaluation charts...
+        app_utils.plot_evaluation_metrics(self.evaluation_metrics_canvas, metrics)
+        self.log_test_result("评估图表已显示。") # Evaluation charts displayed.
+
+        self.log_test_result("\n评估完成。") # Evaluation finished.
 
 
     def log_message(self, message):
