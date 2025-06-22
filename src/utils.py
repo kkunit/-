@@ -37,23 +37,23 @@ def plot_training_curves(figure_canvas, history):
 
     # Plot Loss
     ax1 = fig.add_subplot(121)
-    ax1.plot(epochs_range, history['train_loss'], label='训练损失 (Train Loss)')
+    ax1.plot(epochs_range, history['train_loss'], label='Train Loss')
     if history.get('val_loss') and any(history['val_loss']): # Check if val_loss exists and is not all zeros/placeholders
-        ax1.plot(epochs_range, history['val_loss'], label='验证损失 (Validation Loss)')
-    ax1.set_title('损失曲线 (Loss Curves)')
-    ax1.set_xlabel('轮次 (Epoch)')
-    ax1.set_ylabel('损失 (Loss)')
+        ax1.plot(epochs_range, history['val_loss'], label='Validation Loss')
+    ax1.set_title('Loss Curves')
+    ax1.set_xlabel('Epoch')
+    ax1.set_ylabel('Loss')
     ax1.legend()
     ax1.grid(True)
 
     # Plot Accuracy
     ax2 = fig.add_subplot(122)
-    ax2.plot(epochs_range, history['train_acc'], label='训练准确率 (Train Accuracy)')
+    ax2.plot(epochs_range, history['train_acc'], label='Train Accuracy')
     if history.get('val_acc') and any(history['val_acc']): # Check if val_acc exists and is not all zeros/placeholders
-        ax2.plot(epochs_range, history['val_acc'], label='验证准确率 (Validation Accuracy)')
-    ax2.set_title('准确率曲线 (Accuracy Curves)')
-    ax2.set_xlabel('轮次 (Epoch)')
-    ax2.set_ylabel('准确率 (Accuracy)')
+        ax2.plot(epochs_range, history['val_acc'], label='Validation Accuracy')
+    ax2.set_title('Accuracy Curves')
+    ax2.set_xlabel('Epoch')
+    ax2.set_ylabel('Accuracy')
     ax2.legend()
     ax2.grid(True)
 
@@ -85,9 +85,9 @@ def plot_evaluation_metrics(figure_canvas, metrics):
         cax = ax1.imshow(cm, interpolation='nearest', cmap='Blues')
         fig.colorbar(cax, ax=ax1)
 
-        ax1.set_title('混淆矩阵 (Confusion Matrix)')
-        ax1.set_xlabel('预测标签 (Predicted Label)')
-        ax1.set_ylabel('真实标签 (True Label)')
+        ax1.set_title('Confusion Matrix')
+        ax1.set_xlabel('Predicted Label')
+        ax1.set_ylabel('True Label')
 
         tick_marks = range(num_classes)
         ax1.set_xticks(tick_marks)
@@ -103,8 +103,8 @@ def plot_evaluation_metrics(figure_canvas, metrics):
                          ha="center", va="center",
                          color="white" if cm[i][j] > thresh else "black")
     else:
-        ax1.text(0.5, 0.5, '混淆矩阵数据不可用', ha='center', va='center', fontsize=9) # CM data not available
-        ax1.set_title('混淆矩阵 (Confusion Matrix)')
+        ax1.text(0.5, 0.5, 'CM data not available', ha='center', va='center', fontsize=9)
+        ax1.set_title('Confusion Matrix')
     ax1.grid(False)
 
 
@@ -123,14 +123,14 @@ def plot_evaluation_metrics(figure_canvas, metrics):
         ax2.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--') # Diagonal line
         ax2.set_xlim([0.0, 1.0])
         ax2.set_ylim([0.0, 1.05])
-        ax2.set_xlabel('假阳性率 (FPR)')
-        ax2.set_ylabel('真阳性率 (TPR)')
-        ax2.set_title('ROC曲线 (ROC Curves)')
+        ax2.set_xlabel('False Positive Rate (FPR)')
+        ax2.set_ylabel('True Positive Rate (TPR)')
+        ax2.set_title('ROC Curves')
         ax2.legend(loc="lower right", fontsize='small')
         ax2.grid(True)
     else:
-        ax2.text(0.5, 0.5, 'ROC曲线数据不可用', ha='center', va='center', fontsize=9) # ROC data not available
-        ax2.set_title('ROC曲线 (ROC Curves)')
+        ax2.text(0.5, 0.5, 'ROC data not available', ha='center', va='center', fontsize=9)
+        ax2.set_title('ROC Curves')
 
 
     # 3. Plot PR Curves (per class)
@@ -145,16 +145,16 @@ def plot_evaluation_metrics(figure_canvas, metrics):
             pr_auc_val = pr_aucs[i] if i < len(pr_aucs) else float('nan')
             if recall and precision: # Ensure data is present
                 ax3.plot(recall, precision, lw=2, label=f'{class_name} (AUC = {pr_auc_val:.2f})')
-        ax3.set_xlabel('召回率 (Recall)')
-        ax3.set_ylabel('精确率 (Precision)')
-        ax3.set_title('PR曲线 (PR Curves)')
+        ax3.set_xlabel('Recall')
+        ax3.set_ylabel('Precision')
+        ax3.set_title('Precision-Recall Curves')
         ax3.legend(loc="lower left", fontsize='small') # Use lower left or best
         ax3.grid(True)
         ax3.set_ylim([0.0, 1.05]) # Precision can be 1
         ax3.set_xlim([0.0, 1.0])  # Recall is between 0 and 1
     else:
-        ax3.text(0.5, 0.5, 'PR曲线数据不可用', ha='center', va='center', fontsize=9) # PR data not available
-        ax3.set_title('PR曲线 (PR Curves)')
+        ax3.text(0.5, 0.5, 'PR data not available', ha='center', va='center', fontsize=9)
+        ax3.set_title('Precision-Recall Curves')
 
     try:
         fig.tight_layout(pad=1.5) # Add some padding

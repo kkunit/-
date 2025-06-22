@@ -17,7 +17,7 @@ class CVApp:
     def __init__(self, root):
         self.root = root
         self.root.title("图像分类与分割工具") # Changed to Chinese
-        self.root.geometry("1000x950") # Increased height for plots
+        self.root.geometry("1000x800") # Reduced height slightly, will manage internal layout
 
         # Model related attributes
         self.current_model_instance = None # Will hold the instantiated model
@@ -112,24 +112,24 @@ class CVApp:
         self.save_model_button.grid(row=5, column=0, columnspan=2, padx=5, pady=5, sticky=tk.EW)
 
         progress_frame = ttk.LabelFrame(tab, text="训练过程与日志") # Changed
-        progress_frame.pack(fill=tk.X, padx=10, pady=10)
-        self.progress_display = scrolledtext.ScrolledText(progress_frame, height=10, wrap=tk.WORD, state=tk.DISABLED)
+        progress_frame.pack(fill=tk.X, padx=10, pady=5) # Reduced pady
+        self.progress_display = scrolledtext.ScrolledText(progress_frame, height=8, wrap=tk.WORD, state=tk.DISABLED) # Reduced height
         self.progress_display.pack(expand=True, fill=tk.X, padx=5, pady=5)
 
         # --- Training Curves Frame ---
         training_curves_frame = ttk.LabelFrame(tab, text="训练曲线 (轮次 vs 指标)")
-        training_curves_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        training_curves_frame.pack(fill=tk.BOTH, expand=False, padx=10, pady=5) # expand=False
 
-        fig_train_curves = Figure(figsize=(8, 3), dpi=100) # Adjusted size
+        fig_train_curves = Figure(figsize=(7, 2.5), dpi=100) # Reduced size
         self.training_curves_canvas = FigureCanvasTkAgg(fig_train_curves, master=training_curves_frame)
-        self.training_curves_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        # Add placeholder plots or text
+        self.training_curves_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.X, expand=False) # expand=False, fill=tk.X
+        # Add placeholder plots or text (will be cleared by actual plot function)
         train_ax1 = fig_train_curves.add_subplot(121)
-        train_ax1.set_title("Loss")
+        train_ax1.set_title("Loss") # Placeholder, will be in English later
         train_ax1.set_xlabel("Epoch")
         train_ax1.set_ylabel("Loss")
         train_ax2 = fig_train_curves.add_subplot(122)
-        train_ax2.set_title("Accuracy")
+        train_ax2.set_title("Accuracy") # Placeholder
         train_ax2.set_xlabel("Epoch")
         train_ax2.set_ylabel("Accuracy")
         fig_train_curves.tight_layout()
@@ -137,38 +137,39 @@ class CVApp:
 
 
         # --- Testing and Evaluation Frame (Combined) ---
-        testing_main_frame = ttk.LabelFrame(tab, text="模型测试与评估") # Changed
-        testing_main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # This frame should not expand excessively to push buttons off.
+        testing_main_frame = ttk.LabelFrame(tab, text="模型测试与评估")
+        testing_main_frame.pack(fill=tk.X, expand=False, padx=10, pady=10) # fill=tk.X, expand=False
 
         # Controls for testing
-        test_controls_frame = ttk.Frame(testing_main_frame)
-        test_controls_frame.pack(fill=tk.X, pady=5)
-        self.load_model_button = ttk.Button(test_controls_frame, text="加载已训练模型", command=self.load_trained_model) # Changed
-        self.load_model_button.pack(side=tk.LEFT, padx=5)
-        self.select_test_images_button = ttk.Button(test_controls_frame, text="选择测试图片", command=self.select_test_images, state=tk.DISABLED) # Changed
-        self.select_test_images_button.pack(side=tk.LEFT, padx=5)
-        self.recognize_button = ttk.Button(test_controls_frame, text="运行评估", command=self.recognize_images, state=tk.DISABLED) # Changed
-        self.recognize_button.pack(side=tk.LEFT, padx=5)
+        test_controls_frame = ttk.Frame(testing_main_frame) # This frame holds buttons
+        test_controls_frame.pack(fill=tk.X, pady=2) # Reduced pady
+        self.load_model_button = ttk.Button(test_controls_frame, text="加载已训练模型", command=self.load_trained_model)
+        self.load_model_button.pack(side=tk.LEFT, padx=5, pady=2)
+        self.select_test_images_button = ttk.Button(test_controls_frame, text="选择测试图片", command=self.select_test_images, state=tk.DISABLED)
+        self.select_test_images_button.pack(side=tk.LEFT, padx=5, pady=2)
+        self.recognize_button = ttk.Button(test_controls_frame, text="运行评估", command=self.recognize_images, state=tk.DISABLED)
+        self.recognize_button.pack(side=tk.LEFT, padx=5, pady=2)
 
         # Test results text display
-        self.test_results_display = scrolledtext.ScrolledText(testing_main_frame, height=8, wrap=tk.WORD, state=tk.DISABLED) # Reduced height
-        self.test_results_display.pack(expand=True, fill=tk.X, padx=5, pady=5)
+        self.test_results_display = scrolledtext.ScrolledText(testing_main_frame, height=6, wrap=tk.WORD, state=tk.DISABLED) # Further Reduced height
+        self.test_results_display.pack(expand=False, fill=tk.X, padx=5, pady=5) # expand=False
 
         # --- Evaluation Metrics Plot Frame ---
-        # This frame is now part of the larger "Testing and Evaluation" frame
         eval_metrics_plot_frame = ttk.LabelFrame(testing_main_frame, text="评估指标图表")
-        eval_metrics_plot_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        eval_metrics_plot_frame.pack(fill=tk.X, expand=False, padx=5, pady=5) # fill=tk.X, expand=False
 
-        fig_eval_metrics = Figure(figsize=(8, 3.5), dpi=100) # Adjusted size
+        fig_eval_metrics = Figure(figsize=(7, 3), dpi=100) # Reduced size
         self.evaluation_metrics_canvas = FigureCanvasTkAgg(fig_eval_metrics, master=eval_metrics_plot_frame)
-        self.evaluation_metrics_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        # Add placeholder plots or text
-        eval_ax1 = fig_eval_metrics.add_subplot(131) # 1 row, 3 cols, 1st plot
-        eval_ax1.set_title("混淆矩阵")
+        self.evaluation_metrics_canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.X, expand=False) # expand=False, fill=tk.X
+
+        # Placeholder plots (will be cleared by actual plot function)
+        eval_ax1 = fig_eval_metrics.add_subplot(131)
+        eval_ax1.set_title("CM") # Placeholder
         eval_ax2 = fig_eval_metrics.add_subplot(132)
-        eval_ax2.set_title("ROC曲线")
+        eval_ax2.set_title("ROC") # Placeholder
         eval_ax3 = fig_eval_metrics.add_subplot(133)
-        eval_ax3.set_title("PR曲线")
+        eval_ax3.set_title("PR") # Placeholder
         fig_eval_metrics.tight_layout()
         self.evaluation_metrics_canvas.draw()
 

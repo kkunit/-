@@ -381,35 +381,32 @@ class MainAppWindow(QMainWindow):
         if history.get('val_loss'):
             axes.plot(epochs, history['val_loss'], 'ro-', label='Validation Loss')
 
-        # Plot Dice (assuming it's stored as 'val_dice')
-        # For segmentation, Dice is more common than accuracy for validation.
-        # If train_dice is also available, it can be plotted.
-        # Creating a twinx axis for Dice if scales are different from Loss
-        ax2 = axes.twinx()
+        ax2 = axes.twinx() # Second y-axis for Dice
         plotted_dice = False
-        if history.get('val_dice'):
+        if history.get('val_dice'): # Assuming 'val_dice' is the key from history.json
             ax2.plot(epochs, history['val_dice'], 'gs-', label='Validation Dice')
             plotted_dice = True
-        if history.get('train_dice'): # If you store train_dice in history
-             ax2.plot(epochs, history.get('train_dice'), 'ms-', label='Train Dice') # Example
-             plotted_dice = True
-
+        # Add train_dice if available in history
+        # if history.get('train_dice'):
+        #     ax2.plot(epochs, history['train_dice'], 'cs-', label='Train Dice')
+        #     plotted_dice = True
 
         axes.set_xlabel("Epochs")
-        axes.set_ylabel("Loss", color='blue')
-        axes.tick_params(axis='y', labelcolor='blue')
+        axes.set_ylabel("Loss", color='tab:blue')
+        axes.tick_params(axis='y', labelcolor='tab:blue')
         lines, labels = axes.get_legend_handles_labels()
 
         if plotted_dice:
-            ax2.set_ylabel("Dice Score", color='green')
-            ax2.tick_params(axis='y', labelcolor='green')
+            ax2.set_ylabel("Dice Score", color='tab:green')
+            ax2.tick_params(axis='y', labelcolor='tab:green')
             lines2, labels2 = ax2.get_legend_handles_labels()
-            axes.legend(lines + lines2, labels + labels2, loc='best')
-        else:
+            axes.legend(lines + lines2, labels + labels2, loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=2) # Adjust legend position
+        else: # Only loss was plotted
             axes.legend(loc='best')
-            ax2.set_yticks([]) # Hide y-axis if no dice data
+            ax2.set_yticks([]) # Hide secondary y-axis if no dice data
 
         axes.set_title("Training Loss & Dice Curves")
+        fig.subplots_adjust(bottom=0.2) # Adjust bottom margin for legend
         axes.grid(True)
         canvas.draw()
 
@@ -621,10 +618,10 @@ class MainAppWindow(QMainWindow):
         if cm_data and isinstance(cm_data, list):
             cm_np = np.array(cm_data)
             cax = ax1.imshow(cm_np, interpolation='nearest', cmap='Blues')
-            fig.colorbar(cax, ax=ax1, shrink=0.8) # Shrink colorbar a bit
+            fig.colorbar(cax, ax=ax1, shrink=0.8)
             ax1.set_title('Confusion Matrix', fontsize=10)
-            ax1.set_xlabel('Predicted', fontsize=8)
-            ax1.set_ylabel('True', fontsize=8)
+            ax1.set_xlabel('Predicted Label', fontsize=8)
+            ax1.set_ylabel('True Label', fontsize=8)
             if class_names and len(class_names) == cm_np.shape[0]:
                 tick_marks = np.arange(len(class_names))
                 ax1.set_xticks(tick_marks)
@@ -655,8 +652,8 @@ class MainAppWindow(QMainWindow):
             ax2.plot([0, 1], [0, 1], color='navy', lw=1, linestyle='--')
             ax2.set_xlim([0.0, 1.0])
             ax2.set_ylim([0.0, 1.05])
-            ax2.set_xlabel('False Positive Rate', fontsize=8)
-            ax2.set_ylabel('True Positive Rate', fontsize=8)
+            ax2.set_xlabel('False Positive Rate (FPR)', fontsize=8)
+            ax2.set_ylabel('True Positive Rate (TPR)', fontsize=8)
             ax2.set_title('ROC Curve', fontsize=10)
             ax2.legend(loc="lower right", fontsize='x-small')
             ax2.grid(True)
@@ -666,21 +663,17 @@ class MainAppWindow(QMainWindow):
 
         # 3. PR Curve (only if binary data is available in metrics_data['pr_curve'])
         ax3 = fig.add_subplot(133)
-        pr_curve_data = metrics_data.get("pr_curve") # Expects {'precision': [...], 'recall': [...]}
-        # Note: PR AUC is not explicitly calculated by eval_utils's calculate_classification_metrics by default
-        # but can be added if precision/recall arrays are available.
+        pr_curve_data = metrics_data.get("pr_curve")
         if isinstance(pr_curve_data, dict) and 'precision' in pr_curve_data and 'recall' in pr_curve_data:
             precision = pr_curve_data['precision']
             recall = pr_curve_data['recall']
-            # pr_auc = metrics_data.get("pr_auc", "N/A") # If you calculate and add this
-            # auc_label_pr = f"AUC = {pr_auc:.2f}" if isinstance(pr_auc, float) else f"AUC = {pr_auc}"
-            ax3.plot(recall, precision, color='blue', lw=2, label=f'PR Curve') # Add AUC if available
+            ax3.plot(recall, precision, color='blue', lw=2, label=f'PR Curve')
             ax3.set_xlabel('Recall', fontsize=8)
             ax3.set_ylabel('Precision', fontsize=8)
             ax3.set_ylim([0.0, 1.05])
             ax3.set_xlim([0.0, 1.0])
             ax3.set_title('Precision-Recall Curve', fontsize=10)
-            ax3.legend(loc="best", fontsize='x-small')
+            ax3.legend(loc="best", fontsize='x-small') # 'best' can sometimes overlap, consider 'lower left' or similar
             ax3.grid(True)
         else:
             ax3.text(0.5, 0.5, 'PR data N/A', ha='center', va='center')

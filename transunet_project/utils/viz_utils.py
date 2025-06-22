@@ -27,9 +27,9 @@ def plot_training_curves(history, metrics=['loss', 'accuracy', 'dice', 'iou']):
         epochs = range(1, len(history.get(train_metric_key, [])) + 1)
 
         if train_metric_key in history and len(history[train_metric_key]) > 0:
-            ax.plot(epochs, history[train_metric_key], 'bo-', label=f'Training {metric_name}')
+            ax.plot(epochs, history[train_metric_key], 'bo-', label=f'Train {metric_name.capitalize()}')
         if val_metric_key in history and len(history[val_metric_key]) > 0:
-            ax.plot(epochs, history[val_metric_key], 'ro-', label=f'Validation {metric_name}')
+            ax.plot(epochs, history[val_metric_key], 'ro-', label=f'Validation {metric_name.capitalize()}')
 
         ax.set_title(f'Training and Validation {metric_name.capitalize()}')
         ax.set_xlabel('Epochs')
@@ -38,10 +38,6 @@ def plot_training_curves(history, metrics=['loss', 'accuracy', 'dice', 'iou']):
         ax.grid(True)
 
     plt.tight_layout()
-    # Instead of plt.show(), we might want to return the figure object
-    # for embedding in a Tkinter/PyQt GUI.
-    # For now, let's assume it will be saved or shown directly.
-    # plt.show()
     return fig
 
 
@@ -106,21 +102,20 @@ def display_segmentation_results(images, true_masks, pred_masks, num_samples=3, 
         # Plotting
         ax_img = axes[i, 0]
         ax_img.imshow(img)
-        ax_img.set_title(f"Image {i+1} {title_suffix}")
+        ax_img.set_title(f"Original Image {i+1}{title_suffix}")
         ax_img.axis('off')
 
         ax_true_mask = axes[i, 1]
-        ax_true_mask.imshow(tm, cmap='gray') # Or a specific cmap for multi-class
-        ax_true_mask.set_title(f"True Mask {i+1} {title_suffix}")
+        ax_true_mask.imshow(tm, cmap='gray')
+        ax_true_mask.set_title(f"Ground Truth {i+1}{title_suffix}")
         ax_true_mask.axis('off')
 
         ax_pred_mask = axes[i, 2]
-        ax_pred_mask.imshow(pm_labels, cmap='gray') # Or a specific cmap for multi-class
-        ax_pred_mask.set_title(f"Predicted Mask {i+1} {title_suffix}")
+        ax_pred_mask.imshow(pm_labels, cmap='gray')
+        ax_pred_mask.set_title(f"Prediction {i+1}{title_suffix}")
         ax_pred_mask.axis('off')
 
     plt.tight_layout()
-    # plt.show()
     return fig
 
 def save_single_segmentation_sample(image_tensor, true_mask_tensor, pred_mask_tensor,
@@ -170,23 +165,22 @@ def save_single_segmentation_sample(image_tensor, true_mask_tensor, pred_mask_te
 def plot_roc_curve(fpr, tpr, auc_score, title='ROC Curve'):
     """Plots a single ROC curve."""
     fig, ax = plt.subplots(1, 1, figsize=(6, 5))
-    ax.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (area = {auc_score:.2f})')
+    ax.plot(fpr, tpr, color='darkorange', lw=2, label=f'ROC curve (AUC = {auc_score})') # AUC score is already string formatted or N/A
     ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
     ax.set_xlim([0.0, 1.0])
     ax.set_ylim([0.0, 1.05])
-    ax.set_xlabel('False Positive Rate')
-    ax.set_ylabel('True Positive Rate')
+    ax.set_xlabel('False Positive Rate (FPR)')
+    ax.set_ylabel('True Positive Rate (TPR)')
     ax.set_title(title)
     ax.legend(loc="lower right")
     ax.grid(True)
     plt.tight_layout()
     return fig
 
-def plot_pr_curve(recall, precision, title='Precision-Recall Curve'):
+def plot_pr_curve(recall, precision, title='Precision-Recall Curve'): # Add auc_score if available for PR
     """Plots a single Precision-Recall curve."""
     fig, ax = plt.subplots(1, 1, figsize=(6, 5))
-    # The PR curve from sklearn might have precision for recall=0 at the end, handle this.
-    ax.plot(recall, precision, color='blue', lw=2, label='PR curve')
+    ax.plot(recall, precision, color='blue', lw=2, label='PR curve') # Add AUC to label if available
     ax.set_xlabel('Recall')
     ax.set_ylabel('Precision')
     ax.set_ylim([0.0, 1.05])
